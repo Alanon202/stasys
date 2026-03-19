@@ -47,10 +47,20 @@ impl Manager {
         }
 
         let instant_actions = self.state.get_active_instant_actions();
+        let instant_action_names: Vec<String> = instant_actions.iter().map(|a| a.name.clone()).collect();
 
         log_message("Triggering instant actions at startup...");
         for action in instant_actions {
             run_action(self, &action).await;
+        }
+
+        let now = Instant::now();
+        for actions in [&mut self.state.default_actions, &mut self.state.ac_actions, &mut self.state.battery_actions] {
+            for action in actions.iter_mut() {
+                if instant_action_names.contains(&action.name) {
+                    action.last_triggered = Some(now);
+                }
+            }
         }
 
         self.state.instants_triggered = true;
@@ -77,7 +87,7 @@ impl Manager {
                 log_message(&format!("Failed to restore brightness: {}", e));
             }
         }
-        
+
         let now = Instant::now();
         let debounce = Duration::from_secs(cfg.debounce_seconds as u64);
         self.state.debounce = Some(now + debounce);
@@ -87,14 +97,12 @@ impl Manager {
         let is_locked = self.state.lock_state.is_locked;
         let cmd_to_check = self.state.lock_state.command.clone();
 
-        // Clear only actions that are before or equal to the current stage
         for actions in [&mut self.state.default_actions, &mut self.state.ac_actions, &mut self.state.battery_actions] {
             let mut past_lock = false;
             for a in actions.iter_mut() {
                 if matches!(a.kind, crate::config::model::IdleAction::LockScreen) {
                     past_lock = true;
                 }
-                // if locked, preserve stages past lock (so dpms/suspend remain offset correctly)
                 if is_locked && past_lock {
                     continue;
                 }
@@ -102,18 +110,15 @@ impl Manager {
             }
         }
 
-        // Use the helper method to get active actions
         let (is_instant, lock_index) = {
             let actions = self.state.get_active_actions_mut();
 
-            // Skip instant actions here. handled elsewhere
             let index = actions.iter()
                 .position(|a| a.last_triggered.is_none())
                 .unwrap_or(actions.len().saturating_sub(1));
 
             let is_instant = !actions.is_empty() && actions[index].is_instant();
 
-            // Find lock index if needed
             let lock_index = if is_locked {
                 actions.iter().position(|a| matches!(a.kind, crate::config::model::IdleAction::LockScreen))
             } else {
@@ -123,7 +128,7 @@ impl Manager {
             (is_instant, lock_index)
         }; // Borrow ends here
 
-        // Reset action_index
+        // Reset action_index to start of action list (but preserve last_triggered timestamps)
         if !is_locked {
             self.state.action_index = 0;
         }
@@ -194,17 +199,19 @@ impl Manager {
             return;
         }
 
-        // Calculate earliest allowed fire time
+        // Skip instant actions - only triggered by power state changes
+        if actions[index].is_instant() {
+            self.state.action_index += 1;
+            return;
+        }
+
         let timeout = Duration::from_secs(actions[index].timeout as u64);
         let next_fire = if let Some(last_trig) = actions[index].last_triggered {
-            // Already triggered: timeout from when it last fired
             last_trig + timeout
         } else if index > 0 {
-            // Not first action: fire relative to previous action
             if let Some(prev_trig) = actions[index - 1].last_triggered {
                 prev_trig + timeout
             } else {
-                // Previous hasn't fired yet, shouldn't happen but fallback
                 last_activity + timeout
             }
         } else {
@@ -331,8 +338,7 @@ impl Manager {
         // Reset timing state
         self.state.last_activity = now;
         self.state.debounce = Some(now + debounce);
-        
-        // Clear last_triggered for all actions
+
         for actions in [
             &mut self.state.default_actions,
             &mut self.state.ac_actions,

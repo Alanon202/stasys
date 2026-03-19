@@ -70,7 +70,9 @@ pub async fn spawn_power_source_monitor(manager: Arc<Mutex<Manager>>) {
     drop(mgr);
 
     let mut last_on_ac = last_on_ac;
-    let mut ticker = tokio::time::interval(Duration::from_secs(5));
+    // Poll every 1 second for responsive AC plug/unplug detection
+    // Lower values = more responsive but slightly higher CPU usage
+    let mut ticker = tokio::time::interval(Duration::from_secs(1));
 
     loop {
         ticker.tick().await;
