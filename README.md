@@ -1,24 +1,24 @@
+> **⚠️ STASYS - STABLE FORK**
+> This is **Stasys** - a stable fork of Stasis v0.7.0, maintained to preserve brightness restoration and stable media detection.
+> **Why this fork exists:** Upstream v0.8+ removed automatic brightness restoration and introduced media detection instability.
+> **Goal:** Keep v0.7.0 stability with selective bug fixes from later versions.
+
 <p align="center">
   <img src="assets/stasis.png" alt="Stasis Logo" width="200"/>
 </p>
 
-<h1 align="center">Stasis</h1>
+<h1 align="center">Stasys</h1>
 
 <p align="center">
   <strong>A modern Wayland idle manager that knows when to step back.</strong>
 </p>
 
 <p align="center">
-  Keep your session in perfect balance—automatically preventing idle when it matters, allowing it when it doesn't.
+  <b>Stable Fork of Stasis v0.7.0</b> • Preserving brightness restoration and stable media detection
 </p>
 
 <p align="center">
-  <b>Join the Official Stasis Discord!</b><br></p>
-
-
-<p align="center">
   <img src="https://img.shields.io/github/last-commit/saltnpepper97/stasis?style=for-the-badge&color=%2328A745" alt="GitHub last commit"/>
-  <img src="https://img.shields.io/aur/version/stasis?style=for-the-badge" alt="AUR version">
   <img src="https://img.shields.io/badge/License-MIT-E5534B?style=for-the-badge" alt="MIT License"/>
   <img src="https://img.shields.io/badge/Wayland-00BFFF?style=for-the-badge&logo=wayland&logoColor=white" alt="Wayland"/>
   <img src="https://img.shields.io/badge/Rust-1.89+-orange?style=for-the-badge&logo=rust&logoColor=white" alt="Rust"/>
@@ -29,237 +29,196 @@
   <a href="#-installation">Installation</a> •
   <a href="#-quick-start">Quick Start</a> •
   <a href="#compositor-support">Compositor Support</a> •
-  <a href="#-soundtabs-browser-plugin">SoundTabs Plugin</a> •
-  <a href="#-contributing">Contributing</a>
+  <a href="#-configuration">Configuration</a>
 </p>
 
 ---
 
 ## ✨ Features
 
-Stasis doesn't just lock your screen after a timer—it understands context. Watching a video? Reading a document? Playing music? Stasis detects these scenarios and intelligently manages idle behavior, so you never have to jiggle your mouse to prevent an unwanted screen lock.
+Stasys doesn't just lock your screen after a timer—it understands context. Watching a video? Reading a document? Playing music? Stasys detects these scenarios and intelligently manages idle behavior.
 
 - **🧠 Smart idle detection** with configurable timeouts
 - **🎵 Media-aware idle handling** – automatically detects media playback
-- **🌐 Per-tab browser detection** – optional [SoundTabs](#-soundtabs-browser-plugin) plugin for granular media tracking
 - **🚫 Application-specific inhibitors** – prevent idle when specific apps are running
 - **⏸️ Idle inhibitor respect** – honors Wayland idle inhibitor protocols
-- **🛌 Lid events via DBus** – detect laptop lid open/close events to manage idle
+- **🛌 Lid events via DBus** – detect laptop lid open/close events
 - **⚙️ Flexible action system** – supports named action blocks and custom commands
 - **🔍 Regex pattern matching** – powerful app filtering with regular expressions
 - **📝 Clean configuration** – uses the intuitive [RUNE](https://github.com/saltnpepper97/rune-cfg) configuration language
 - **⚡ Live reload** – update configuration without restarting the daemon
-
-## 🗺️ Roadmap
-
-> Stasis is evolving! Here's what's currently in progress, planned, and potential future features. Items are grouped to show what's happening now and what's coming next.
-
-### Complete
-
-- [x] **Sequential action blocks** – Action blocks run in the exact order defined in your config. Stasis maintains an internal index to track progress, making execution smarter and more reliable.  
-- [x] **Lock-centric design** – When a `lock-screen` action block is present and properly configured, Stasis tracks the PID of the command it executes to ensure the sequence stays intact.  
-- [x] **Resume-command support** – Each action block can run an optional follow-up command after completion.  
-- [x] **Event-driven, minimal polling** – Stasis now relies primarily on two internal loops that notify others to wake from deep sleep, significantly reducing CPU and memory usage at idle.  
-- [x] **CLI per-state triggers** – Trigger a **specific state**, the **current state**, or **all states**, all while respecting previously completed actions.  
-
-
-### In Progress
-
-- [ ] **User profiles / presets** – save and load different workflows for various scenarios (work, gaming, etc.).
-
-### Planned
-
-- [ ] **Custom notifications** – display alerts for idle events or action execution.
-- [ ] **Logging & analytics** – historical idle data for power/performance insights.
-- [ ] **Power-saving optimizations** – CPU/GPU-aware idle handling.
-
+- **💡 Automatic brightness restoration** – captures and restores brightness on resume
 
 ## 📦 Installation
 
-### Arch Linux (AUR)
-
-Install the stable release or latest development version:
-
-```bash
-# Stable release
-yay -S stasis
-
-# Or latest git version
-yay -S stasis-git
-```
-
-Works with `paru` too:
-```bash
-paru -S stasis
-```
-
-### NixOS
-
-**please note the note at the bottom about flakes and nix.**
-
-If you use Nix flakes, `stasis` provides a `flake.nix` so you can build or
-consume the package directly from flakes.
-
-Quick ways to use `stasis` from flakes:
-
-- Build directly from the remote flake (no local checkout required):
-
-```bash
-# build the stasis package from GitHub
-nix build 'github:saltnpepper97/stasis#stasis'
-```
-
-- Add `stasis` as an input in your own `flake.nix` and reference the package in
-  your outputs or NixOS configuration. Example (snippet):
-
-```nix
-inputs = {
-  nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-  stasis.url = "github:saltnpepper97/stasis";
-};
-
-outputs = { self, nixpkgs, ... }:
-let
-  system = "x86_64-linux"; # adjust for your host
-in {
-  # reference the stasis package from the stasis flake
-  packages.${system}.my-stasis = self.inputs.stasis.packages.${system}.stasis;
-
-  # Or add it to a NixOS configuration
-  nixosConfigurations.<host> = nixpkgs.lib.nixosSystem {
-    inherit system;
-    modules = [ ./configuration.nix ];
-    configuration = {
-      environment.systemPackages = [ self.inputs.stasis.packages.${system}.stasis ];
-    };
-  };
-}
-```
-
-Notes:
-- please know this i am a complete noob in nix and flakes, so updates and fixes will be appreciated! --CamRed25
-
 ### From Source
 
-Build and install manually for maximum control:
+Build and install manually:
 
 ```bash
 # Clone and build
-git clone https://github.com/saltnpepper97/stasis
-cd stasis
+git clone https://github.com/Alanon202/stasys
+cd stasys
 cargo build --release --locked
 
 # Install system-wide
-sudo install -Dm755 target/release/stasis /usr/local/bin/stasis
+sudo install -Dm755 target/release/stasys /usr/local/bin/stasys
 
 # Or install to user directory
-install -Dm755 target/release/stasis ~/.local/bin/stasis
+install -Dm755 target/release/stasys ~/.local/bin/stasys
 ```
+
+### Systemd Service
+
+A systemd user service file is provided in `systemd/stasys.service`. Copy it to your systemd user directory:
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp systemd/stasys.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now stasys.service
+```
+
+Edit the service file if you installed stasys to a different location than `/usr/local/bin/stasys`.
 
 ## 🚀 Quick Start
 
-Get up and running in just a few minutes!  
-See the [webpage](https://saltnpepper97.github.io/stasis/) for quick start instructions, including how to ensure your user is in the `input` group and much more!
+### 1. Add User to Required Groups
+
+Stasys requires access to input devices and brightness controls:
+
+```bash
+sudo usermod -aG input,video $USER
+```
+
+**Log out and back in** for group changes to take effect.
+
+### 2. Create Configuration
+
+On first run, Stasys automatically generates a default configuration at `~/.config/stasys/stasys.rune`. You can also create it manually:
+
+```bash
+mkdir -p ~/.config/stasys
+cp examples/stasys.rune ~/.config/stasys/stasys.rune
+```
+
+Edit the configuration to your needs.
+
+### 3. Start Stasys
+
+```bash
+# Start the daemon
+stasys daemon
+
+# Or use systemd (recommended)
+systemctl --user start stasys
+```
+
+### 4. Verify It's Running
+
+```bash
+stasys info
+```
 
 ## Compositor Support
 
-Stasis integrates with each compositor's native IPC protocol for optimal app detection and inhibition.
+Stasys integrates with each compositor's native IPC protocol for optimal app detection and inhibition.
 
 | Compositor | Support Status | Notes |
 |------------|---------------|-------|
 | **Niri** | ✅ Full Support | Tested and working perfectly |
 | **Hyprland** | ✅ Full Support | Native IPC integration |
-| **labwc** | ⚠️ Limited | Process-based fallback (details below) |
-| **River** | ⚠️ Limited | Process-based fallback (details below) |
-| **Your Favorite** | 🤝 PRs Welcome | Help us expand support! |
+| **labwc** | ⚠️ Limited | Process-based fallback |
+| **River** | ⚠️ Limited | Process-based fallback |
 
-### 📌 River & labwc Compatibility Notes
+### River & labwc Compatibility Notes
 
-Both River and labwc have IPC protocol limitations that affect Stasis functionality:
+Both River and labwc have IPC protocol limitations:
 
-- **Limited window enumeration:** These compositors don't provide complete window lists via IPC
-- **Fallback mode:** Stasis uses process-based detection (sysinfo) for app inhibition
-- **Pattern adjustments:** Executable names may differ from app IDs—check logs and adjust regex patterns accordingly
+- **Limited window enumeration** – Can't get complete window lists via IPC
+- **Fallback mode** – Uses process-based detection (sysinfo) for app inhibition
+- **Pattern adjustments** – Executable names may differ from app IDs
 
-> **💡 Tip:** When using River or labwc, include both exact executable names and flexible regex patterns in your `inhibit_apps` configuration. Enable verbose logging to see which apps are detected.
+> **💡 Tip:** When using River or labwc, include both exact executable names and flexible regex patterns in your `inhibit_apps` configuration.
 
-### Want to Add Compositor Support?
+## 🔧 Configuration
 
-We welcome contributions! Adding support typically involves:
+Stasys uses **[RUNE](https://github.com/saltnpepper97/rune-cfg)**—a purpose-built configuration language.
 
-1. Implementing the compositor's native IPC protocol
-2. Adding window/app detection functionality  
-3. Testing with common applications
+### Config Location
 
-Check existing implementations in the codebase for reference, and don't hesitate to open an issue if you need guidance.
+- **User config:** `~/.config/stasys/stasys.rune`
+- **System config:** `/etc/stasys/stasys.rune`
+- **Logs:** `~/.cache/stasys/stasys.log`
 
-## 🌐 SoundTabs Browser Plugin
+### Example Configuration
 
-**[SoundTabs](https://github.com/saltnpepper97/soundtabs)** is an optional browser extension that provides accurate per-tab media detection. While SoundTabs is a standalone project not exclusive to Stasis, it solves critical browser media detection issues that benefit idle management.
+```rune
+stasis:
+  pre_suspend_command "hyprlock"
+  monitor_media true
+  ignore_remote_media true
+  respect_idle_inhibitors true
+  
+  # Laptop lid events
+  lid_close_action "lock-screen"
+  lid_open_action "wake"
+  
+  # Desktop idle actions
+  lock_screen:
+    timeout 300  # 5 minutes
+    command "loginctl lock-session"
+    resume-command "notify-send 'Welcome Back!'"
+    lock-command "swaylock"
+  end
 
-### The Browser Media Problem
+  dpms:
+    timeout 60  # 1 minute
+    command "niri msg action power-off-monitors"
+    resume-command "niri msg action power-on-monitors"
+  end
 
-Standard browser MPRIS implementations have significant limitations:
+  suspend:
+    timeout 1800  # 30 minutes
+    command "systemctl suspend"
+  end
+end
+```
 
-- **Browser-wide signals only** – No way to know which specific tab is playing
-- **Sticky inhibitors** – Once media starts, MPRIS can inhibit until the tab closes
-- **Poor muted tab handling** – Can't distinguish between muted and paused tabs
-- **Inaccurate state reporting** – Doesn't always reflect actual playback status
+### CLI Usage
 
-SoundTabs fixes these issues by providing real-time, per-tab audio state directly from the browser.
+```bash
+# Show current state
+stasys info
 
-### Why Use SoundTabs with Stasis?
+# Trigger action manually
+stasys trigger lock-screen
 
-- **🎯 Per-tab accuracy** – Know exactly which tab is playing media
-- **🔇 Muted tab detection** – Correctly detect when tabs are muted vs. paused
-- **⚡ Real-time updates** – Instant state changes without audio sink polling
-- **🔄 Seamless fallback** – Stasis automatically uses standard MPRIS if SoundTabs isn't installed
-- **🪟 Works alongside other players** – Doesn't interfere with Spotify, VLC, or other media apps
+# Pause idle detection
+stasys pause for 1h
+stasys resume
 
-### Browser Support
+# Toggle idle inhibition (Waybar-friendly)
+stasys toggle-inhibit
 
-| Browser | Status | Installation |
-|---------|--------|--------------|
-| **Firefox** | ✅ Available | [Install SoundTabs](https://github.com/saltnpepper97/soundtabs) |
-| **Chrome/Chromium** | 🚧 Coming Soon | Extension in development |
-| **Brave/Edge/Vivaldi** | 🚧 Coming Soon | Will use Chrome extension |
+# Reload config
+stasys reload
 
-### How It Works with Stasis
+# View recent logs
+stasys dump 50
 
-1. **With SoundTabs:** Stasis receives precise per-tab media state via Unix socket communication
-2. **Without SoundTabs:** Stasis falls back to standard MPRIS + audio sink detection
-3. **No configuration needed:** Stasis automatically detects and uses SoundTabs when available
-4. **Other media respected:** Non-browser media players continue to work through MPRIS
-
-> **📝 Note:** SoundTabs is completely optional and not Stasis-specific. Stasis works great without it using improved MPRIS detection with audio sink verification.
-
-## 🔧 About RUNE Configuration
-
-Stasis uses **[RUNE](https://github.com/saltnpepper97/rune-cfg)**—a purpose-built configuration language that's both powerful and approachable.
-
-**Why RUNE?**
-- 📖 **Human-readable:** Clean syntax that makes sense at a glance
-- 🔢 **Variables:** Define once, reference anywhere
-- 🎯 **Type-safe:** Catch configuration errors before runtime
-- 📦 **Nested blocks:** Organize complex configurations naturally
-- 🔤 **Raw strings:** Use `r"regex.*"` for patterns without escaping hell
-- 💬 **Comments:** Document your config with `#`
-- 🏷️ **Metadata:** Add context with `@` annotations
-
-RUNE makes configuration feel less like programming and more like describing what you want—because that's what a config should be.
+# Stop daemon
+stasys stop
+```
 
 ## 🤝 Contributing
 
-Contributions make Stasis better for everyone! Here's how you can help:
-
-### Ways to Contribute
+Contributions are welcome! Here's how you can help:
 
 - 🐛 **Report bugs** – Open an issue with reproduction steps
 - 💡 **Suggest features** – Share your use cases and ideas
 - 🔧 **Submit PRs** – Fix bugs, add features, or improve code
-- 📦 **Package for distros** – Make Stasis available to more users
 - 📖 **Improve docs** – Better explanations, examples, and guides
-- 🖥️ **Add compositor support** – Expand Wayland ecosystem compatibility
 
 ## 📄 License
 
