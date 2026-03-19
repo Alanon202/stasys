@@ -30,11 +30,11 @@ pub fn set_verbose(enabled: bool) {
 /// Get log file path
 fn log_path() -> PathBuf {
     let mut path = dirs::cache_dir().unwrap_or_else(|| PathBuf::from("/tmp"));
-    path.push("stasis");
+    path.push("stasys");
     if !path.exists() {
         let _ = create_dir_all(&path);
     }
-    path.push("stasis.log");
+    path.push("stasys.log");
     path
 }
 

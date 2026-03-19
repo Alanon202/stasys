@@ -106,14 +106,14 @@ fn load_merged_config() -> Result<RuneConfig> {
 
     // 1. Internal defaults (embedded from examples/)
     // Note: This will be compiled into the binary
-    let internal_default = include_str!("../../examples/stasis.rune");
+    let internal_default = include_str!("../../examples/stasys.rune");
     if let Ok(internal) = RuneConfig::from_str(internal_default) {
         config = Some(internal);
         found_any = true;
     }
 
-    // 2. Shipped defaults (/usr/share/stasis/stasis.rune)
-    let share_path = PathBuf::from("/usr/share/stasis/stasis.rune");
+    // 2. Shipped defaults (/usr/share/stasys/stasys.rune)
+    let share_path = PathBuf::from("/usr/share/stasys/stasys.rune");
     if share_path.exists() {
         if let Ok(shared) = RuneConfig::from_file(&share_path) {
             config = Some(shared);
@@ -121,8 +121,8 @@ fn load_merged_config() -> Result<RuneConfig> {
         }
     }
 
-    // 3. System config (/etc/stasis/stasis.rune)
-    let sys_path = PathBuf::from("/etc/stasis/stasis.rune");
+    // 3. System config (/etc/stasys/stasys.rune)
+    let sys_path = PathBuf::from("/etc/stasys/stasys.rune");
     if sys_path.exists() {
         if let Ok(system) = RuneConfig::from_file(&sys_path) {
             config = Some(system);
@@ -130,9 +130,9 @@ fn load_merged_config() -> Result<RuneConfig> {
         }
     }
 
-    // 4. User config (~/.config/stasis/stasis.rune) - highest priority
+    // 4. User config (~/.config/stasys/stasys.rune) - highest priority
     if let Some(mut user_path) = dirs::home_dir() {
-        user_path.push(".config/stasis/stasis.rune");
+        user_path.push(".config/stasys/stasys.rune");
         if user_path.exists() {
             if let Ok(user) = RuneConfig::from_file(&user_path) {
                 config = Some(user);

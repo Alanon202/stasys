@@ -49,9 +49,9 @@ pub async fn prepare_action(action: &IdleActionBlock) -> Vec<ActionRequest> {
     }
 }
 
-/// Run a shell command silently (log to /tmp/stasis.log)
+/// Run a shell command silently (log to /tmp/stasys.log)
 pub async fn run_command_silent(cmd: &str) -> Result<()> {
-    let log_file = "/tmp/stasis.log";
+    let log_file = "/tmp/stasys.log";
     let fut = async {
         let mut child = Command::new("sh")
             .arg("-c")

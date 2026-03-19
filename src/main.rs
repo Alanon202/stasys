@@ -16,7 +16,7 @@ use crate::{
     log::log_error_message,
 };
 
-pub const SOCKET_PATH: &str = "/tmp/stasis.sock";
+pub const SOCKET_PATH: &str = "/tmp/stasys.sock";
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {

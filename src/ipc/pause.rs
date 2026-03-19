@@ -13,10 +13,10 @@ use crate::{
 
 pub const PAUSE_HELP_MESSAGE: &str = r#"Pause all timers indefinitely or for a specific duration/time
 
-Usage: 
-  stasis pause                  Pause indefinitely until 'resume' is called
-  stasis pause for <DURATION>   Pause for a specific duration, then auto-resume
-  stasis pause until <TIME>     Pause until a specific time, then auto-resume
+Usage:
+  stasys pause                  Pause indefinitely until 'resume' is called
+  stasys pause for <DURATION>   Pause for a specific duration, then auto-resume
+  stasys pause until <TIME>     Pause until a specific time, then auto-resume
 
 Duration format:
   You can specify durations using combinations of:
@@ -35,16 +35,16 @@ Time format (24-hour):
   - 13
 
 Examples:
-  stasis pause                  Pause indefinitely
-  stasis pause for 5m           Pause for 5 minutes
-  stasis pause for 1h 30m       Pause for 1 hour and 30 minutes
-  stasis pause for 2h 15m 30s   Pause for 2 hours, 15 minutes, and 30 seconds
-  stasis pause until 1:30pm     Pause until 1:30 PM today
-  stasis pause until 130pm      Pause until 1:30 PM today
-  stasis pause until 13:30      Pause until 13:30 (1:30 PM) today
-  stasis pause until 1330       Pause until 13:30 (1:30 PM) today
+  stasys pause                  Pause indefinitely
+  stasys pause for 5m           Pause for 5 minutes
+  stasys pause for 1h 30m       Pause for 1 hour and 30 minutes
+  stasys pause for 2h 15m 30s   Pause for 2 hours, 15 minutes, and 30 seconds
+  stasys pause until 1:30pm     Pause until 1:30 PM today
+  stasys pause until 130pm      Pause until 1:30 PM today
+  stasys pause until 13:30      Pause until 13:30 (1:30 PM) today
+  stasys pause until 1330       Pause until 13:30 (1:30 PM) today
 
-Use 'stasis resume' to manually resume before the timer expires."#;
+Use 'stasys resume' to manually resume before the timer expires."#;
 
 /// Parse a duration string like "5m", "1h", "30s", or "1h 30m 15s"
 fn parse_duration(s: &str) -> Result<Duration, String> {
