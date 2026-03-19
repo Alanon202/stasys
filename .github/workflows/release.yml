@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build (e.g., v0.7.1)'
+        required: true
+        type: string
 
 env:
   CARGO_TERM_COLOR: always
@@ -31,14 +37,15 @@ jobs:
         mkdir -p release
         cp target/release/stasys release/
         cd release
-        tar czvf stasys-${{ github.ref_name }}-x86_64-unknown-linux-gnu.tar.gz stasys
-        sha256sum stasys-${{ github.ref_name }}-x86_64-unknown-linux-gnu.tar.gz > stasys-${{ github.ref_name }}-x86_64-unknown-linux-gnu.tar.gz.sha256
+        TAG_NAME="${{ github.event.inputs.tag || github.ref_name }}"
+        tar czvf stasys-${TAG_NAME}-x86_64-unknown-linux-gnu.tar.gz stasys
+        sha256sum stasys-${TAG_NAME}-x86_64-unknown-linux-gnu.tar.gz > stasys-${TAG_NAME}-x86_64-unknown-linux-gnu.tar.gz.sha256
     
     - name: Upload release assets
       uses: softprops/action-gh-release@v2
       with:
         files: |
-          release/stasys-${{ github.ref_name }}-x86_64-unknown-linux-gnu.tar.gz
-          release/stasys-${{ github.ref_name }}-x86_64-unknown-linux-gnu.tar.gz.sha256
+          release/stasys-${{ github.event.inputs.tag || github.ref_name }}-x86_64-unknown-linux-gnu.tar.gz
+          release/stasys-${{ github.event.inputs.tag || github.ref_name }}-x86_64-unknown-linux-gnu.tar.gz.sha256
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
