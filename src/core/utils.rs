@@ -8,7 +8,16 @@ pub enum ChassisKind {
 pub fn detect_chassis() -> ChassisKind {
     // Try reading from sysfs
     if let Ok(data) = std::fs::read_to_string("/sys/class/dmi/id/chassis_type") {
-        if data.trim() == "8" || data.trim() == "9" || data.trim() == "10" || data.trim() == "14" {
+        let laptop_chassis = vec![
+            "8",  // Portable
+            "9",  // Laptop
+            "10", // Notebook
+            "14", // Sub Notebook
+            "30", // Tablet
+            "31", // Convertible
+            "32", // Detachable
+        ];
+        if laptop_chassis.contains(&data.trim()) {
             return ChassisKind::Laptop;
         }
     }
