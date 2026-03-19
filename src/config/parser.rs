@@ -198,20 +198,11 @@ pub fn load_config() -> Result<StasisConfig> {
         .get::<String>("stasis.lid_close_action")
         .or_else(|_| config.get::<String>("stasis.lid-close-action"))
         .ok()
-        .map(|s| match s.as_str() {
+        .map(|s| match s.trim() {
             "ignore" => LidCloseAction::Ignore,
             "lock_screen" | "lock-screen" => LidCloseAction::LockScreen,
             "suspend" => LidCloseAction::Suspend,
-            other if other.starts_with("custom:") => {
-                LidCloseAction::Custom(other.trim_start_matches("custom:").trim().to_string())
-            }
-            _ => {
-                log_message(&format!(
-                    "Unknown lid_close_action '{}', defaulting to ignore",
-                    s
-                ));
-                LidCloseAction::Ignore
-            }
+            other => LidCloseAction::Custom(other.to_string()),
         })
         .unwrap_or(LidCloseAction::Ignore);
 
@@ -219,19 +210,10 @@ pub fn load_config() -> Result<StasisConfig> {
         .get::<String>("stasis.lid_open_action")
         .or_else(|_| config.get::<String>("stasis.lid-open-action"))
         .ok()
-        .map(|s| match s.as_str() {
+        .map(|s| match s.trim() {
             "ignore" => LidOpenAction::Ignore,
             "wake" => LidOpenAction::Wake,
-            other if other.starts_with("custom:") => {
-                LidOpenAction::Custom(other.trim_start_matches("custom:").trim().to_string())
-            }
-            _ => {
-                log_message(&format!(
-                    "Unknown lid_open_action '{}', defaulting to ignore",
-                    s
-                ));
-                LidOpenAction::Ignore
-            }
+            other => LidOpenAction::Custom(other.to_string()),
         })
         .unwrap_or(LidOpenAction::Ignore);
 
@@ -326,7 +308,7 @@ pub fn load_config() -> Result<StasisConfig> {
         actions,
         pre_suspend_command,
         monitor_media,
-        media_blacklist, 
+        media_blacklist,
         ignore_remote_media,
         respect_wayland_inhibitors,
         inhibit_apps,
