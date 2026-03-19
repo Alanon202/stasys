@@ -1416,8 +1416,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "stasis"
-version = "0.7.0"
+name = "stasys"
+version = "0.7.1"
 dependencies = [
  "chrono",
  "clap",
