@@ -1,7 +1,4 @@
-use std::{
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use crate::{
@@ -98,80 +95,8 @@ pub async fn trigger_action_by_name(manager: Arc<Mutex<Manager>>, name: &str) ->
         // Run the lock command
         run_action(&mut mgr, &action).await;
 
-        // Mark as advanced past lock
+        // Mark as advanced past lock (this also resets timers and advances action_index)
         mgr.advance_past_lock().await;
-
-        // ---- Mirror reset() behavior exactly for timers ----
-        let now = Instant::now();
-        if let Some(cfg) = &mgr.state.cfg {
-            let debounce = Duration::from_secs(cfg.debounce_seconds as u64);
-            mgr.state.last_activity = now;
-            mgr.state.debounce = Some(now + debounce);
-
-            // Clear last_triggered for all actions
-            {
-                let actions = &mut mgr.state.default_actions;
-                for a in actions.iter_mut() {
-                    a.last_triggered = None;
-                }
-            }
-            {
-                let actions = &mut mgr.state.ac_actions;
-                for a in actions.iter_mut() {
-                    a.last_triggered = None;
-                }
-            }
-            {
-                let actions = &mut mgr.state.battery_actions;
-                for a in actions.iter_mut() {
-                    a.last_triggered = None;
-                }
-            }
-
-            // Determine active block name first
-            let active_block = if !mgr.state.ac_actions.is_empty() || !mgr.state.battery_actions.is_empty() {
-                match mgr.state.on_battery() {
-                    Some(true) => "battery",
-                    Some(false) => "ac",
-                    None => "default",
-                }
-            } else {
-                "default"
-            };
-
-            // Now isolate block mutation
-            {
-                let actions = match active_block {
-                    "ac" => &mut mgr.state.ac_actions,
-                    "battery" => &mut mgr.state.battery_actions,
-                    _ => &mut mgr.state.default_actions,
-                };
-
-                // Recalculate action index
-                let mut next_index = actions
-                    .iter()
-                    .position(|a| a.last_triggered.is_none())
-                    .unwrap_or_else(|| actions.len().saturating_sub(1));
-
-                // If lock action exists, skip past it so next timer continues properly
-                if let Some(lock_index) =
-                    actions.iter().position(|a| matches!(a.kind, crate::config::model::IdleAction::LockScreen))
-                {
-                    if next_index <= lock_index {
-                        next_index = lock_index.saturating_add(1);
-
-                        let debounce_end = now + debounce;
-                        if next_index < actions.len() {
-                            actions[next_index].last_triggered = Some(debounce_end);
-                        }
-
-                        mgr.state.lock_state.post_advanced = true;
-                    }
-                }
-
-                mgr.state.action_index = next_index;
-            }
-        }
 
         // Wake idle loop to recalculate timers
         mgr.state.notify.notify_one();
