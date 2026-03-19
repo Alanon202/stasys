@@ -136,11 +136,13 @@ pub async fn spawn_lock_watcher(manager: Arc<Mutex<Manager>>) -> JoinHandle<()> 
                     }
 
                     mgr.state.lock_state.pid = None;
-                    mgr.state.lock_state.post_advanced = false;
-                    mgr.state.action_index = 0;
                     mgr.state.lock_state.is_locked = false;
 
-                    mgr.reset().await;
+                    // For loginctl locks, don't reset action_index (no PID to monitor)
+                    if mgr.state.lock_state.command.is_some() {
+                        mgr.state.action_index = 0;
+                        mgr.reset().await;
+                    }
 
                     log_message("Lockscreen ended — exiting lock watcher");
                     break;

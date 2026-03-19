@@ -98,7 +98,12 @@ pub async fn is_process_running(cmd: &str) -> bool {
     if first_word.is_empty() {
         return false;
     }
-    match Command::new("pgrep").arg(first_word).output().await {
+    let binary_name = std::path::Path::new(first_word)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or(first_word);
+
+    match Command::new("pgrep").arg("-x").arg(binary_name).output().await {
         Ok(output) => !output.stdout.is_empty(),
         Err(_) => false,
     }

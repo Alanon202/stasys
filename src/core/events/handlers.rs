@@ -146,24 +146,43 @@ pub async fn handle_event(manager: &Arc<Mutex<Manager>>, event: Event) {
 
         Event::LoginctlLock => {
             let mut mgr = manager.lock().await;
-            log_message("loginctl lock-session received — triggering lock action...");
+            log_message("loginctl lock-session received — handling lock...");
 
-            // Find and execute the lock screen action if it exists
-            if let Some(cfg) = &mgr.state.cfg {
-                if let Some(lock_action) = cfg.actions.iter().find(|a| a.kind == IdleAction::LockScreen).cloned() {
-                    // Run the lock action
-                    run_action(&mut mgr, &lock_action).await;
-                    
-                    // Advance past lock so subsequent actions (like DPMS/suspend) can trigger
+            if mgr.state.lock_state.is_locked {
+                if !mgr.state.lock_state.post_advanced {
                     mgr.advance_past_lock().await;
-                    
-                    // Wake the lock watcher loop
-                    mgr.state.lock_notify.notify_waiters();
-                    wake_idle_tasks(&mgr.state);
-                } else {
-                    log_message("No lock screen action defined in config");
                 }
+                return;
             }
+
+            let lock_cmd_opt = if let Some(cfg) = &mgr.state.cfg {
+                cfg.actions.iter()
+                    .find(|a| a.kind == IdleAction::LockScreen)
+                    .and_then(|a| a.lock_command.clone())
+            } else {
+                None
+            };
+
+            mgr.state.lock_state.is_locked = true;
+            mgr.state.lock_notify.notify_one();
+
+            if let Some(lock_cmd) = lock_cmd_opt {
+                log_message(&format!("Running lock-command: {}", lock_cmd));
+                match crate::core::manager::actions::run_command_detached(&lock_cmd).await {
+                    Ok(pid) => {
+                        mgr.state.lock_state.pid = Some(pid);
+                        log_message(&format!("Lock command started with PID {}", pid));
+                    }
+                    Err(e) => {
+                        log_message(&format!("Failed to run lock-command: {}", e));
+                    }
+                }
+            } else {
+                log_message("No lock-command configured");
+            }
+
+            mgr.advance_past_lock().await;
+            wake_idle_tasks(&mgr.state);
         }
 
         Event::LoginctlUnlock => {

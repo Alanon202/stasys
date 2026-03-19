@@ -86,20 +86,21 @@ pub async fn trigger_action_by_name(manager: Arc<Mutex<Manager>>, name: &str) ->
     let is_lock = matches!(action.kind, crate::config::model::IdleAction::LockScreen);
 
     if is_lock {
-        // Mark lock state and notify watcher
-        mgr.state.lock_state.is_locked = true;
-        mgr.state.lock_state.post_advanced = false;
-        mgr.state.lock_state.command = Some(action.command.clone());
-        mgr.state.lock_notify.notify_one();
+        if action.command.contains("loginctl lock-session") {
+            log_message("Lock uses loginctl lock-session, triggering it via IPC");
+            if let Err(e) = crate::core::manager::actions::run_command_detached(&action.command).await {
+                return Err(format!("Failed to trigger lock: {}", e));
+            }
+        } else {
+            mgr.state.lock_state.is_locked = true;
+            mgr.state.lock_state.post_advanced = false;
+            mgr.state.lock_state.command = Some(action.command.clone());
+            mgr.state.lock_notify.notify_one();
 
-        // Run the lock command
-        run_action(&mut mgr, &action).await;
-
-        // Mark as advanced past lock (this also resets timers and advances action_index)
-        mgr.advance_past_lock().await;
-
-        // Wake idle loop to recalculate timers
-        mgr.state.notify.notify_one();
+            run_action(&mut mgr, &action).await;
+            mgr.advance_past_lock().await;
+            mgr.state.notify.notify_one();
+        }
     } else {
         run_action(&mut mgr, &action).await;
     }

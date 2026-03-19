@@ -168,6 +168,23 @@ pub async fn run_action(mgr: &mut Manager, action: &IdleActionBlock) {
         action.name, action.kind, action.timeout, action.command
     ));
 
+    // For loginctl lock actions, just trigger the D-Bus signal
+    // The LoginctlLock event handler manages lock state
+    if matches!(action.kind, crate::config::model::IdleAction::LockScreen) {
+        if action.command.contains("loginctl lock-session") {
+            log_message("Lock uses loginctl lock-session, triggering it (state will be managed by loginctl event)");
+            if let Err(e) = crate::core::manager::actions::run_command_detached(&action.command).await {
+                log_message(&format!("Failed to run loginctl lock-session: {}", e));
+            }
+            return;
+        }
+
+        if mgr.state.lock_state.is_locked {
+            log_message("Lock screen action skipped: already locked");
+            return;
+        }
+    }
+
     // Brightness capture
     if matches!(action.kind, crate::config::model::IdleAction::Brightness) && mgr.state.previous_brightness.is_none() {
         let _ = capture_brightness(&mut mgr.state).await;
