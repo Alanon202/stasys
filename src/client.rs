@@ -19,6 +19,7 @@ pub async fn handle_client_command(cmd: &Command) -> Result<()> {
         Command::Resume => handle_simple_command("resume", "Idle timers resumed").await,
         Command::Stop => handle_simple_command("stop", "Stasis daemon stopped").await,
         Command::ToggleInhibit => handle_toggle_inhibit().await,
+        Command::Profile { name } => handle_profile(name).await,
     }
 }
 
@@ -203,6 +204,35 @@ async fn handle_simple_command(command: &str, success_msg: &str) -> Result<()> {
                     // On timeout, still show success message
                     println!("{}", success_msg);
                 }
+            }
+        }
+        Ok(Err(_)) | Err(_) => {
+            eprintln!("No running Stasis instance found");
+            process::exit(1);
+        }
+    }
+    Ok(())
+}
+
+async fn handle_profile(name: &str) -> Result<()> {
+    match timeout(Duration::from_secs(3), UnixStream::connect(SOCKET_PATH)).await {
+        Ok(Ok(mut stream)) => {
+            let msg = format!("profile {}", name);
+            let _ = stream.write_all(msg.as_bytes()).await;
+
+            let mut response = Vec::new();
+            match timeout(Duration::from_secs(2), stream.read_to_end(&mut response)).await {
+                Ok(Ok(_)) => {
+                    let response_text = String::from_utf8_lossy(&response);
+                    if response_text.starts_with("ERROR:") {
+                        eprintln!("{}", response_text.trim_start_matches("ERROR:").trim());
+                        process::exit(1);
+                    } else if !response_text.is_empty() {
+                        println!("{}", response_text);
+                    }
+                }
+                Ok(Err(e)) => eprintln!("Failed to read response: {}", e),
+                Err(_) => eprintln!("Timeout reading from Stasis"),
             }
         }
         Ok(Err(_)) | Err(_) => {

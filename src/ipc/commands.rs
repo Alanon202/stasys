@@ -124,3 +124,143 @@ pub async fn list_available_actions(manager: Arc<Mutex<Manager>>) -> Vec<String>
     actions.sort();
     actions
 }
+
+pub async fn switch_profile(manager: Arc<Mutex<Manager>>, profile_name: &str) -> Result<String, String> {
+    use std::fs;
+    use crate::config;
+
+    // Handle "list" command
+    if profile_name == "list" {
+        let profiles_dir = dirs::home_dir()
+            .map(|mut p| {
+                p.push(".config/stasys/profiles");
+                p
+            });
+
+        if let Some(dir) = profiles_dir {
+            if let Ok(entries) = fs::read_dir(&dir) {
+                let mut profiles: Vec<String> = entries
+                    .filter_map(|e| e.ok())
+                    .filter_map(|e| {
+                        e.path()
+                            .file_stem()
+                            .and_then(|s| s.to_str())
+                            .map(|s| s.to_string())
+                    })
+                    .collect();
+                profiles.sort();
+
+                if profiles.is_empty() {
+                    return Ok("No profiles found. Create .rune files in ~/.config/stasys/profiles/".to_string());
+                }
+
+                return Ok(format!("Available profiles: {}", profiles.join(", ")));
+            }
+        }
+
+        return Ok("No profiles directory found".to_string());
+    }
+
+    // Handle "cycle" command
+    let actual_profile = if profile_name == "cycle" {
+        // Get current profile
+        let current = dirs::home_dir()
+            .map(|mut p| {
+                p.push(".config/stasys/active_profile");
+                p
+            })
+            .and_then(|path| fs::read_to_string(&path).ok())
+            .map(|s| s.trim().to_string())
+            .unwrap_or_else(|| "none".to_string());
+
+        // Get all available profiles
+        let profiles_dir = dirs::home_dir()
+            .map(|mut p| {
+                p.push(".config/stasys/profiles");
+                p
+            });
+
+        let mut profiles = vec!["none".to_string()];
+        if let Some(dir) = profiles_dir {
+            if let Ok(entries) = fs::read_dir(&dir) {
+                let mut profile_names: Vec<String> = entries
+                    .filter_map(|e| e.ok())
+                    .filter_map(|e| {
+                        e.path()
+                            .file_stem()
+                            .and_then(|s| s.to_str())
+                            .map(|s| s.to_string())
+                    })
+                    .collect();
+                profile_names.sort();
+                profiles.extend(profile_names);
+            }
+        }
+
+        // Find current and get next
+        if let Some(pos) = profiles.iter().position(|p| p == &current) {
+            profiles[(pos + 1) % profiles.len()].clone()
+        } else {
+            "none".to_string()
+        }
+    } else {
+        profile_name.to_string()
+    };
+
+    let mut mgr = manager.lock().await;
+
+    // Handle profile switch
+    let config_path = if actual_profile == "none" || actual_profile.is_empty() {
+        // Use base config
+        let path = dirs::home_dir()
+            .map(|mut p| {
+                p.push(".config/stasys/stasys.rune");
+                p
+            });
+
+        if path.as_ref().map(|p| p.exists()).unwrap_or(false) {
+            path
+        } else {
+            return Err("Base config not found at ~/.config/stasys/stasys.rune".to_string());
+        }
+    } else {
+        // Use profile config
+        let path = dirs::home_dir()
+            .map(|mut p| {
+                p.push(".config/stasys/profiles");
+                p.push(format!("{}.rune", actual_profile));
+                p
+            });
+
+        if path.as_ref().map(|p| p.exists()).unwrap_or(false) {
+            path
+        } else {
+            return Err(format!("Profile '{}' not found. Create ~/.config/stasys/profiles/{}.rune", actual_profile, actual_profile));
+        }
+    };
+
+    // Load the new config
+    let new_cfg = match config::parser::load_config_from_path(config_path.as_ref().unwrap()) {
+        Ok(cfg) => cfg,
+        Err(e) => return Err(format!("Failed to load config: {}", e)),
+    };
+
+    // Apply the new config
+    mgr.state.update_from_config(&new_cfg).await;
+    mgr.recheck_media().await;
+    mgr.trigger_instant_actions().await;
+
+    // Save active profile
+    if let Some(mut config_dir) = dirs::home_dir() {
+        config_dir.push(".config/stasys/active_profile");
+        let _ = fs::write(&config_dir, &actual_profile);
+    }
+
+    let profile_display = if actual_profile.is_empty() || actual_profile == "none" {
+        "base config"
+    } else {
+        &actual_profile
+    };
+
+    Ok(format!("Switched to profile: {}", profile_display))
+}

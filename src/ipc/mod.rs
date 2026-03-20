@@ -31,7 +31,7 @@ pub async fn spawn_ipc_socket_with_listener(
                 Ok((mut stream, _addr)) => {
                     let manager = Arc::clone(&manager);
                     let app_inhibitor = Arc::clone(&app_inhibitor);
-                    
+
                     tokio::spawn(async move {
                         let result = timeout(Duration::from_secs(10), async {
                             let mut buf = vec![0u8; 256];
@@ -51,21 +51,21 @@ pub async fn spawn_ipc_socket_with_listener(
                                                     mgr.state.update_from_config(&new_cfg).await;
                                                     mgr.recheck_media().await;
                                                     mgr.trigger_instant_actions().await;
-                                                    
+
                                                     let idle_time = mgr.state.last_activity.elapsed();
                                                     let uptime = mgr.state.start_time.elapsed();
                                                     let manually_inhibited = mgr.state.manually_paused;
                                                     let paused = mgr.state.paused;
                                                     let media_blocking = mgr.state.media_blocking;
                                                     let cfg_clone = mgr.state.cfg.clone();
-                                                    
+
                                                     drop(mgr);
 
                                                     {
                                                         let mut inhibitor = app_inhibitor.lock().await;
                                                         inhibitor.update_from_config(&new_cfg).await;
                                                     }
-                                                    
+
                                                     let app_blocking = match timeout(
                                                         Duration::from_millis(100),
                                                         async {
@@ -78,7 +78,18 @@ pub async fn spawn_ipc_socket_with_listener(
                                                     };
 
                                                     log_message("Config reloaded successfully");
+
+                                                    // Load active profile name
+                                                    let active_profile = dirs::home_dir()
+                                                        .map(|mut p| {
+                                                            p.push(".config/stasys/active_profile");
+                                                            p
+                                                        })
+                                                        .and_then(|path| std::fs::read_to_string(&path).ok())
+                                                        .map(|s| s.trim().to_string());
                                                     
+                                                    let profile_display = active_profile.as_deref().filter(|s| !s.is_empty() && *s != "none");
+
                                                     if let Some(cfg) = &cfg_clone {
                                                         format!(
                                                             "Config reloaded successfully\n\n{}",
@@ -88,7 +99,8 @@ pub async fn spawn_ipc_socket_with_listener(
                                                                 Some(paused),
                                                                 Some(manually_inhibited),
                                                                 Some(app_blocking),
-                                                                Some(media_blocking)
+                                                                Some(media_blocking),
+                                                                profile_display
                                                             )
                                                         )
                                                     } else {
@@ -102,10 +114,23 @@ pub async fn spawn_ipc_socket_with_listener(
                                             }
                                         }
 
+                                        // === PROFILES ===
+                                        cmd if cmd.starts_with("profile ") => {
+                                            let profile_name = cmd.strip_prefix("profile ").unwrap_or("").trim();
+                                            if profile_name.is_empty() {
+                                                "ERROR: Profile name required. Use 'stasys profile list' to see available profiles".to_string()
+                                            } else {
+                                                match commands::switch_profile(manager.clone(), profile_name).await {
+                                                    Ok(msg) => msg,
+                                                    Err(e) => format!("ERROR: {}", e),
+                                                }
+                                            }
+                                        }
+
                                         // === PAUSE/RESUME ===
                                         cmd if cmd.starts_with("pause") => {
                                             let args = cmd.strip_prefix("pause").unwrap_or("").trim();
-                                            
+
                                             if args.eq_ignore_ascii_case("help") 
                                                 || args == "-h" 
                                                 || args == "--help" {
@@ -192,7 +217,7 @@ pub async fn spawn_ipc_socket_with_listener(
                                             let as_json = cmd.contains("--json");
                                             let mut retry_count = 0;
                                             let max_retries = 5;
-                                            
+
                                             loop {
                                                 match manager.try_lock() {
                                                     Ok(mgr) => {
@@ -202,9 +227,9 @@ pub async fn spawn_ipc_socket_with_listener(
                                                         let paused = mgr.state.paused;
                                                         let media_blocking = mgr.state.media_blocking;
                                                         let cfg_clone = mgr.state.cfg.clone();
-                                                        
+
                                                         drop(mgr);
-                                                        
+
                                                         let app_blocking = match timeout(
                                                             Duration::from_millis(100),
                                                             async {
@@ -215,10 +240,21 @@ pub async fn spawn_ipc_socket_with_listener(
                                                             Ok(result) => result,
                                                             Err(_) => false,
                                                         };
-                                                        
+
                                                         let idle_inhibited = paused || app_blocking || manually_inhibited;
 
                                                         break if as_json {
+                                                            // Load active profile for JSON tooltip
+                                                            let active_profile = dirs::home_dir()
+                                                                .map(|mut p| {
+                                                                    p.push(".config/stasys/active_profile");
+                                                                    p
+                                                                })
+                                                                .and_then(|path| std::fs::read_to_string(&path).ok())
+                                                                .map(|s| s.trim().to_string());
+
+                                                            let profile_display = active_profile.as_deref().filter(|s| !s.is_empty() && *s != "none").unwrap_or("base config");
+
                                                             let (text, icon) = if manually_inhibited {
                                                                 ("Inhibited", "manually_inhibited")
                                                             } else if idle_inhibited {
@@ -231,8 +267,9 @@ pub async fn spawn_ipc_socket_with_listener(
                                                                 "text": text,
                                                                 "alt": icon,
                                                                 "tooltip": format!(
-                                                                    "{}\nIdle time: {}\nUptime: {}\nPaused: {}\nManually paused: {}\nApp blocking: {}\nMedia blocking: {}",
+                                                                    "{}\nProfile: {}\nIdle time: {}\nUptime: {}\nPaused: {}\nManually paused: {}\nApp blocking: {}\nMedia blocking: {}",
                                                                     if idle_inhibited { "Idle inhibited" } else { "Idle active" },
+                                                                    profile_display,
                                                                     format_duration(idle_time),
                                                                     format_duration(uptime),
                                                                     paused,
@@ -243,13 +280,25 @@ pub async fn spawn_ipc_socket_with_listener(
                                                             })
                                                             .to_string()
                                                         } else if let Some(cfg) = &cfg_clone {
+                                                            // Load active profile for pretty print
+                                                            let active_profile = dirs::home_dir()
+                                                                .map(|mut p| {
+                                                                    p.push(".config/stasys/active_profile");
+                                                                    p
+                                                                })
+                                                                .and_then(|path| std::fs::read_to_string(&path).ok())
+                                                                .map(|s| s.trim().to_string());
+
+                                                            let profile_display = active_profile.as_deref().filter(|s| !s.is_empty() && *s != "none");
+
                                                             cfg.pretty_print(
-                                                                Some(idle_time), 
-                                                                Some(uptime), 
-                                                                Some(idle_inhibited), 
-                                                                Some(manually_inhibited), 
-                                                                Some(app_blocking), 
-                                                                Some(media_blocking)
+                                                                Some(idle_time),
+                                                                Some(uptime),
+                                                                Some(idle_inhibited),
+                                                                Some(manually_inhibited),
+                                                                Some(app_blocking),
+                                                                Some(media_blocking),
+                                                                profile_display
                                                             )
                                                         } else {
                                                             "No configuration loaded".to_string()
@@ -299,11 +348,11 @@ pub async fn spawn_ipc_socket_with_listener(
                                 }
                             }
                         }).await;
-                        
+
                         if result.is_err() {
                             log_error_message("IPC connection timed out after 10 seconds");
                         }
-                        
+
                         let _ = stream.shutdown().await;
                     });
                 }

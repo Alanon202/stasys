@@ -318,3 +318,169 @@ pub fn load_config() -> Result<StasisConfig> {
         notify_on_unpause,
     })
 }
+
+// --- load config from specific path (for profiles) ---
+pub fn load_config_from_path(path: &PathBuf) -> Result<StasisConfig> {
+    let config = RuneConfig::from_file(path)
+        .wrap_err(format!("failed to parse config file: {:?}", path))?;
+
+    let pre_suspend_command = config
+        .get::<String>("stasis.pre_suspend_command")
+        .or_else(|_| config.get::<String>("stasis.pre-suspend-command"))
+        .ok();
+
+    let monitor_media = config
+        .get::<bool>("stasis.monitor_media")
+        .or_else(|_| config.get::<bool>("stasis.monitor-media"))
+        .unwrap_or(true);
+
+    let ignore_remote_media = config
+        .get::<bool>("stasis.ignore_remote_media")
+        .or_else(|_| config.get::<bool>("stasis.ignore-remote-media"))
+        .unwrap_or(true);
+
+    let media_blacklist: Vec<String> = config
+        .get_value("stasis.media_blacklist")
+        .or_else(|_| config.get_value("stasis.media-blacklist"))
+        .ok()
+        .and_then(|v| match v {
+            Value::Array(arr) => Some(
+                arr.iter()
+                    .filter_map(|v| match v {
+                        Value::String(s) => Some(s.to_lowercase()),
+                        _ => None,
+                    })
+                    .collect(),
+            ),
+            _ => None,
+        })
+        .unwrap_or_default();
+
+    let respect_wayland_inhibitors = config
+        .get::<bool>("stasis.respect_wayland_inhibitors")
+        .or_else(|_| config.get::<bool>("stasis.respect-wayland-inhibitors"))
+        .unwrap_or(true);
+
+    let notify_on_unpause = config
+        .get::<bool>("stasis.notify_on_unpause")
+        .or_else(|_| config.get::<bool>("stasis.notify-on-unpause"))
+        .unwrap_or(false);
+
+    let debounce_seconds = config
+        .get::<u8>("stasis.debounce_seconds")
+        .or_else(|_| config.get::<u8>("stasis.debounce-seconds"))
+        .unwrap_or(0u8);
+
+    let lid_close_action = config
+        .get::<String>("stasis.lid_close_action")
+        .or_else(|_| config.get::<String>("stasis.lid-close-action"))
+        .ok()
+        .map(|s| match s.trim() {
+            "ignore" => LidCloseAction::Ignore,
+            "lock_screen" | "lock-screen" => LidCloseAction::LockScreen,
+            "suspend" => LidCloseAction::Suspend,
+            other => LidCloseAction::Custom(other.to_string()),
+        })
+        .unwrap_or(LidCloseAction::Ignore);
+
+    let lid_open_action = config
+        .get::<String>("stasis.lid_open_action")
+        .or_else(|_| config.get::<String>("stasis.lid-open-action"))
+        .ok()
+        .map(|s| match s.trim() {
+            "ignore" => LidOpenAction::Ignore,
+            "wake" => LidOpenAction::Wake,
+            other => LidOpenAction::Custom(other.to_string()),
+        })
+        .unwrap_or(LidOpenAction::Ignore);
+
+    let inhibit_apps: Vec<AppInhibitPattern> = config
+        .get_value("stasis.inhibit_apps")
+        .or_else(|_| config.get_value("stasis.inhibit-apps"))
+        .ok()
+        .and_then(|v| match v {
+            Value::Array(arr) => Some(
+                arr.iter()
+                    .filter_map(|v| match v {
+                        Value::String(s) => parse_app_pattern(s).ok(),
+                        Value::Regex(s) => Regex::new(s).ok().map(AppInhibitPattern::Regex),
+                        _ => None,
+                    })
+                    .collect(),
+            ),
+            _ => None,
+        })
+        .unwrap_or_default();
+
+    let chassis = detect_chassis();
+    let actions = match chassis {
+        ChassisKind::Laptop => {
+            // Try to load laptop-specific blocks first
+            let ac_actions_result = collect_actions(&config, "stasis.on_ac");
+            let battery_actions_result = collect_actions(&config, "stasis.on_battery");
+
+            // If both AC and battery blocks exist AND have actions, use them
+            if ac_actions_result.is_ok() && battery_actions_result.is_ok() {
+                let ac_actions: Vec<_> = ac_actions_result?
+                    .into_iter()
+                    .map(|mut a| {
+                        a.name = format!("ac.{}", a.name);
+                        a
+                    })
+                    .collect();
+
+                let battery_actions: Vec<_> = battery_actions_result?
+                    .into_iter()
+                    .map(|mut a| {
+                        a.name = format!("battery.{}", a.name);
+                        a
+                    })
+                    .collect();
+
+                // If both are empty, fall back to desktop-style (universal) config
+                if ac_actions.is_empty() && battery_actions.is_empty() {
+                    collect_actions(&config, "stasis")?
+                } else {
+                    [ac_actions, battery_actions].concat()
+                }
+            } else {
+                // Fall back to desktop-style config (universal actions)
+                collect_actions(&config, "stasis")?
+            }
+        }
+        ChassisKind::Desktop => collect_actions(&config, "stasis")?,
+    };
+
+    log_message(&format!("Loaded configuration from: {:?}", path));
+    log_message(&format!("  chassis detected: {}", match chassis { ChassisKind::Laptop => "Laptop", ChassisKind::Desktop => "Desktop" }));
+    log_message(&format!("  actions loaded: {}", actions.len()));
+
+    for action in &actions {
+        let mut details = format!(
+            "    {}: timeout={}s, command=\"{}\"",
+            action.name, action.timeout, action.command
+        );
+
+        if let Some(lock_cmd) = &action.lock_command {
+            details.push_str(&format!(", lock_command=\"{}\"", lock_cmd));
+        }
+        if let Some(resume_cmd) = &action.resume_command {
+            details.push_str(&format!(", resume_command=\"{}\"", resume_cmd));
+        }
+        log_message(&details);
+    }
+
+    Ok(StasisConfig {
+        actions,
+        pre_suspend_command,
+        monitor_media,
+        media_blacklist,
+        ignore_remote_media,
+        respect_wayland_inhibitors,
+        inhibit_apps,
+        debounce_seconds,
+        lid_close_action,
+        lid_open_action,
+        notify_on_unpause,
+    })
+}

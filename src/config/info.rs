@@ -10,27 +10,32 @@ impl StasisConfig {
         is_manually_paused: Option<bool>,
         app_blocking: Option<bool>,
         media_blocking: Option<bool>,
+        active_profile: Option<&str>,
     ) -> String {
         let mut out = String::new();
-        
+
         // Calculate the global pipe position
         // Find the longest label across all sections
-        let status_labels = vec!["Idle Time", "Uptime", "Paused", "Manually Paused", "App Blocking", "Media Blocking"];
-        let config_labels = vec!["PreSuspendCommand", "MonitorMedia", "IgnoreRemoteMedia", 
+        let status_labels = vec!["Active Profile", "Idle Time", "Uptime", "Paused", "Manually Paused", "App Blocking", "Media Blocking"];
+        let config_labels = vec!["PreSuspendCommand", "MonitorMedia", "IgnoreRemoteMedia",
                                  "RespectInhibitors", "NotifyOnUnpause", "DebounceSeconds",
                                  "LidCloseAction", "LidOpenAction", "InhibitApps"];
         let action_labels = vec!["Timeout", "Kind", "Command", "LockCommand", "ResumeCommand"];
-        
+
         let max_label = status_labels.iter()
             .chain(config_labels.iter())
             .chain(action_labels.iter())
             .map(|s| s.len())
             .max()
             .unwrap_or(0);
-        
+
         // Status section
         out.push_str("◆ STATUS\n");
-        
+
+        // Show active profile
+        let profile_display = active_profile.unwrap_or("base config");
+        out.push_str(&format!("  {:<width$} │ {}\n", "Active Profile", profile_display, width = max_label));
+
         if let Some(idle) = idle_time {
             out.push_str(&format!("  {:<width$} │ {}\n", "Idle Time", utils::format_duration(idle), width = max_label));
         }

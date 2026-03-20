@@ -53,6 +53,12 @@ pub enum Command {
         #[arg(long, help = "Output as JSON (for Waybar or scripts)")]
         json: bool,
     },
+
+    #[command(about = "Switch between configuration profiles")]
+    Profile {
+        #[arg(help = "Profile name to switch to (use 'none' for base config, 'list' to show available profiles)")]
+        name: String,
+    },
 }
 
 impl Command {
