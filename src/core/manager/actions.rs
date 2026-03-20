@@ -103,8 +103,25 @@ pub async fn is_process_running(cmd: &str) -> bool {
         .and_then(|s| s.to_str())
         .unwrap_or(first_word);
 
-    match Command::new("pgrep").arg("-x").arg(binary_name).output().await {
-        Ok(output) => !output.stdout.is_empty(),
-        Err(_) => false,
+    // Use procfs to scan /proc directly instead of spawning pgrep
+    // This eliminates PID churn and reduces CPU/memory overhead
+    if let Ok(processes) = procfs::process::all_processes() {
+        for proc_result in processes {
+            if let Ok(proc) = proc_result {
+                // Check stat.comm (process name)
+                if let Ok(stat) = proc.stat() {
+                    if stat.comm == binary_name {
+                        return true;
+                    }
+                }
+                // Fallback to cmdline for full path matching
+                if let Ok(cmdline) = proc.cmdline() {
+                    if cmdline.iter().any(|arg| arg.contains(binary_name)) {
+                        return true;
+                    }
+                }
+            }
+        }
     }
+    false
 }
