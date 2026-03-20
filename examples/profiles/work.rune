@@ -1,0 +1,26 @@
+# Work Profile - Longer timeouts, meeting apps inhibited
+# Use: stasys profile work
+
+stasis:
+  monitor_media true
+  respect_idle_inhibitors true
+  ignore_remote_media true
+  
+  lock_screen:
+    timeout 600
+    command "hyprlock"
+    resume-command "notify-send 'Welcome back!'"
+  end
+  
+  suspend:
+    timeout 3600
+    command "systemctl suspend"
+  end
+  
+  inhibit_apps [
+    "zoom"
+    "teams"
+    "slack"
+    "discord"
+  ]
+end

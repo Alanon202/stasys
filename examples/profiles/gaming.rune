@@ -1,0 +1,30 @@
+# Gaming Profile - Gaming apps inhibited
+# Use: stasys profile gaming
+
+stasis:
+  monitor_media false
+  respect_idle_inhibitors true
+  ignore_remote_media true
+
+  custom_brightness_instant:
+    timeout 0
+    command "brightnessctl set 100%"
+  end
+  
+  dpms:
+    timeout 1200
+    command "niri msg action power-off-monitors"
+    resume-command "niri msg action power-on-monitors"
+  end
+  
+  inhibit_apps [
+    "steam"
+    r"steam_app_.*"
+    "gamescope"
+    "lutris"
+    "heroic"
+    "bottles"
+  ]
+  
+  # No dpms or suspend = disabled during gaming
+end

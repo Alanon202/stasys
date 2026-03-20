@@ -29,7 +29,8 @@
   <a href="#-installation">Installation</a> •
   <a href="#-quick-start">Quick Start</a> •
   <a href="#compositor-support">Compositor Support</a> •
-  <a href="#-configuration">Configuration</a>
+  <a href="#-configuration">Configuration</a> •
+  <a href="#-profiles">Profiles</a>
 </p>
 
 ---
@@ -50,6 +51,12 @@ Stasys doesn't just lock your screen after a timer—it understands context. Wat
 - **💡 Automatic brightness restoration** – captures and restores brightness on resume
 
 ## 📦 Installation
+
+### From Releases
+
+- Download the appropriate archive from Releases
+- Extract `stasys` binary somewhere in your $PATH (ex. .local/bin)
+- Adjust systemd service accordingly or add `stasys` to your DE’s startup menu
 
 ### From Source
 
@@ -209,6 +216,111 @@ stasys dump 50
 
 # Stop daemon
 stasys stop
+```
+
+## 📋 Profiles
+
+Profiles let you switch between different configurations for different scenarios (work, gaming, presentations, etc.).
+
+### How Profiles Work
+
+- Each profile is a **standalone config file** in `~/.config/stasys/profiles/`
+- Switching profiles **completely replaces** your current config
+- Actions **not defined** in a profile are **disabled** during that profile, unless your system provides fallbacks
+- Profile state persists across restarts
+
+### Creating Profiles
+
+- Create a profiles directory in `~/.config/stasys/profiles`
+- Create a profile (e.g., work.rune) manually or use one of the examples in the repo
+
+### Switching Profiles
+
+```bash
+# List available profiles
+stasys profile list
+
+# Switch to a profile
+stasys profile work
+
+# Return to base config
+stasys profile none
+
+# Check current profile
+stasys info
+```
+
+### Example Profiles
+
+Three example profiles are included in `examples/profiles/`:
+
+| Profile | Purpose | Key Changes |
+|---------|---------|-------------|
+| **work.rune** | Office work | Longer timeouts, video call apps inhibited |
+| **gaming.rune** | Gaming | Gaming apps inhibited, no brightness auto-dim |
+| **presentation.rune** | Presentations | No idle, max brightness, inhibitors disabled |
+
+### Waybar Integration
+
+Add profile switching to your Waybar module:
+
+```json
+"custom/stasys": {
+  "exec": "stasys info --json",
+  "format": "{icon}",
+  "format-icons": {
+    "idle_active": "󰾆",
+    "idle_inhibited": "󰅶",
+    "manually_inhibited": "󰅶",
+    "not_running": "󰒲"
+  },
+  "tooltip": true,
+  "on-click": "stasys toggle-inhibit",
+  "on-click-right": "stasys profile cycle",
+  "on-click-middle": "stasys info",
+  "interval": 2,
+  "return-type": "json"
+}
+```
+
+**Profile cycling:** Right-click cycles through: `none` → `work` → `gaming` → `presentation` → `none`...
+
+Alternatively, you can simply use one fallback profile and invoke it directly, i.e. "stasys profile work"
+
+### Advanced: Custom Profile Cycle Script
+
+Create a script for custom profile cycling:
+
+```bash
+#!/bin/bash
+# ~/.local/bin/stasys-profile-cycle
+
+PROFILES=("none" "work" "gaming" "presentation")
+CURRENT=$(cat ~/.config/stasys/active_profile 2>/dev/null || echo "none")
+
+# Find current index
+for i in "${!PROFILES[@]}"; do
+    if [[ "${PROFILES[$i]}" == "$CURRENT" ]]; then
+        NEXT="${PROFILES[$(( (i + 1) % ${#PROFILES[@]} ))]}"
+        stasys profile "$NEXT"
+        notify-send "Stasys Profile" "Switched to: $NEXT"
+        exit 0
+    fi
+done
+
+# Fallback
+stasys profile none
+```
+
+Make it executable and update Waybar:
+```bash
+chmod +x ~/.local/bin/stasys-profile-cycle
+```
+
+```json
+"custom/stasys": {
+  "on-click-right": "~/.local/bin/stasys-profile-cycle"
+}
 ```
 
 ## 🤝 Contributing

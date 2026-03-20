@@ -1,0 +1,21 @@
+# Presentation Profile - No idle, maximum brightness
+# Use: stasys profile presentation
+
+stasis:
+  monitor_media false
+  respect_idle_inhibitors false
+  ignore_remote_media true
+  
+  custom_brightness_instant:
+    timeout 0
+    command "brightnessctl set 100%"
+  end
+  
+  inhibit_apps [
+    "libreoffice"
+    "impress"
+    "zoom"
+  ]
+  
+  # No lock_screen, dpms, or suspend = completely disabled
+end
