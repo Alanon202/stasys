@@ -1,5 +1,5 @@
 use std::{fmt::{Display, Formatter, Result}, time::Instant};
-use regex::Regex;
+use regex_lite::Regex;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum IdleAction {

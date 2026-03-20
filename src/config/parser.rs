@@ -1,5 +1,5 @@
 use eyre::{Result, eyre, WrapErr};
-use regex::Regex;
+use regex_lite::Regex;
 use rune_cfg::{RuneConfig, Value};
 use std::path::PathBuf;
 
