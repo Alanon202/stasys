@@ -111,6 +111,15 @@ pub async fn run_daemon(listener: UnixListener, verbose: bool) -> Result<()> {
     
     // --- Log startup message ---
     log_message(&format!("Running. Idle actions loaded: {}", cfg.actions.len()));
+
+    // --- Spawn periodic memory trim task ---
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_secs(600)); // Every 10 minutes
+        loop {
+            interval.tick().await;
+            crate::log::trim_memory();
+        }
+    });
     
     // --- Run main async tasks ---
     let local = LocalSet::new();
