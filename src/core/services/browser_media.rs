@@ -1,6 +1,6 @@
 use std::sync::Arc;
-use std::os::unix::net::UnixStream;
-use std::io::{Read, Write};
+use tokio::net::UnixStream;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Mutex;
 use tokio::time::{interval, Duration};
 use serde_json::Value;
@@ -15,15 +15,15 @@ const BRIDGE_SOCKET: &str = "/tmp/mpris_bridge.sock";
 const POLL_INTERVAL_MS: u64 = 1000; // Poll every 1 second
 
 /// Query the browser media state from the Python bridge
-fn query_browser_status() -> Result<BrowserMediaState, String> {
-    let mut stream = UnixStream::connect(BRIDGE_SOCKET)
+async fn query_browser_status() -> Result<BrowserMediaState, String> {
+    let mut stream = UnixStream::connect(BRIDGE_SOCKET).await
         .map_err(|e| format!("Failed to connect: {}", e))?;
     
-    stream.write_all(b"status")
+    stream.write_all(b"status").await
         .map_err(|e| format!("Failed to send: {}", e))?;
     
     let mut buffer = vec![0u8; 4096];
-    let size = stream.read(&mut buffer)
+    let size = stream.read(&mut buffer).await
         .map_err(|e| format!("Failed to read: {}", e))?;
     
     if size == 0 {
@@ -63,7 +63,7 @@ pub async fn spawn_browser_media_monitor(manager: Arc<Mutex<Manager>>) {
         loop {
             poll_interval.tick().await;
             
-            match query_browser_status() {
+            match query_browser_status().await {
                 Ok(state) => {
                     if !connected {
                         log_message("Connected to MPRIS bridge");
@@ -157,5 +157,3 @@ async fn handle_browser_media_state(
     // Update browser media playing flag
     mgr.state.browser_media_playing = new_tab_count > 0;
 }
-
-

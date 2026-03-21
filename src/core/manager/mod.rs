@@ -9,6 +9,7 @@ use tokio::{
     task::JoinHandle, 
     time::sleep
 };
+use zbus::Connection;
 
 pub use self::state::ManagerState;
 use crate::{
@@ -169,6 +170,9 @@ impl Manager {
         
         self.fire_resume_queue().await;
         self.state.notify.notify_one();
+
+        // Trim memory after reset to reclaim heap space immediately
+        crate::log::trim_memory();
     }
 
     // Check whether we have been idle enough to elapse one of the timeouts
@@ -441,8 +445,14 @@ impl Manager {
             None => (false, Vec::new()),
         };
 
-        // sync check (pactl + mpris). This is blocking but fine here.
-        let playing = crate::core::services::media::check_media_playing(ignore_remote, &media_blacklist, false);
+        // Get a temporary connection for the check
+        let conn = match Connection::session().await {
+            Ok(c) => c,
+            Err(_) => return,
+        };
+
+        // sync check (pactl + mpris).
+        let playing = crate::core::services::media::check_media_playing_zbus(&conn, ignore_remote, &media_blacklist).await;
 
         // Only change state via the helpers so behaviour stays consistent:
         if playing && !self.state.media_playing {
