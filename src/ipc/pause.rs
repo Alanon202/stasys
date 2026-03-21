@@ -4,7 +4,7 @@ use std::{
 };
 use tokio::time::sleep;
 use tokio::sync::Mutex;
-use chrono::{Local, NaiveTime, Timelike};
+use time::{OffsetDateTime, Time};
 
 use crate::{
     core::manager::Manager,
@@ -150,23 +150,26 @@ fn parse_time_until(s: &str) -> Result<Duration, String> {
     }
 
     // Get target time
-    let target_time = NaiveTime::from_hms_opt(hour_24, minute, 0)
-        .ok_or_else(|| format!("Invalid time: {}:{:02}", hour_24, minute))?;
+    let target_time = Time::from_hms(hour_24 as u8, minute as u8, 0)
+        .map_err(|_| format!("Invalid time: {}:{:02}", hour_24, minute))?;
 
     // Get current time
-    let now = Local::now();
-    let current_time = now.time();
+    let now = OffsetDateTime::now_local()
+        .unwrap_or_else(|_| OffsetDateTime::now_utc());
+    let current_time = Time::from_hms(now.hour(), now.minute(), now.second()).unwrap();
 
     // Calculate duration until target time
     let duration = if target_time > current_time {
         // Target is later today
-        let secs = (target_time.num_seconds_from_midnight() - current_time.num_seconds_from_midnight()) as u64;
-        Duration::from_secs(secs)
+        let target_secs = target_time.hour() as u64 * 3600 + target_time.minute() as u64 * 60 + target_time.second() as u64;
+        let current_secs = current_time.hour() as u64 * 3600 + current_time.minute() as u64 * 60 + current_time.second() as u64;
+        Duration::from_secs(target_secs - current_secs)
     } else {
         // Target is tomorrow (already passed today)
-        let secs_until_midnight = (86400 - current_time.num_seconds_from_midnight()) as u64;
-        let secs_from_midnight = target_time.num_seconds_from_midnight() as u64;
-        Duration::from_secs(secs_until_midnight + secs_from_midnight)
+        let target_secs = target_time.hour() as u64 * 3600 + target_time.minute() as u64 * 60 + target_time.second() as u64;
+        let current_secs = current_time.hour() as u64 * 3600 + current_time.minute() as u64 * 60 + current_time.second() as u64;
+        let secs_until_midnight = 86400 - current_secs;
+        Duration::from_secs(secs_until_midnight + target_secs)
     };
 
     Ok(duration)

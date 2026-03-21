@@ -1,7 +1,7 @@
 use std::fs::{OpenOptions, create_dir_all, metadata, remove_file};
 use std::io::Write;
 use std::path::PathBuf;
-use chrono::Local;
+use time::{OffsetDateTime, macros::format_description};
 use once_cell::sync::Lazy;
 use std::sync::{Mutex, Once};
 
@@ -95,8 +95,12 @@ pub fn log_to_cache(message: &str) {
 }
 
 pub fn log_message(message: &str) {
-    let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-    let msg = format!("[{}][Stasis] {}", timestamp, message);
+    let timestamp = OffsetDateTime::now_local()
+        .unwrap_or_else(|_| OffsetDateTime::now_utc())
+        .format(format_description!("[year]-[month]-[day] [hour]:[minute]:[second]"))
+        .unwrap_or_else(|_| "unknown".to_string());
+
+    let msg = format!("[{}][Stasys] {}", timestamp, message);
 
     log_to_cache(&msg);
 
@@ -106,8 +110,12 @@ pub fn log_message(message: &str) {
 }
 
 pub fn log_error_message(message: &str) {
-    let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-    let error_msg = format!("[{}][ERROR] {}", timestamp, message);
+    let timestamp = OffsetDateTime::now_local()
+        .unwrap_or_else(|_| OffsetDateTime::now_utc())
+        .format(format_description!("[year]-[month]-[day] [hour]:[minute]:[second]"))
+        .unwrap_or_else(|_| "unknown".to_string());
+
+    let error_msg = format!("[{}][ERROR][Stasys] {}", timestamp, message);
 
     log_to_cache(&error_msg);
 
@@ -115,4 +123,3 @@ pub fn log_error_message(message: &str) {
         eprintln!("{}", &error_msg);
     }
 }
-
