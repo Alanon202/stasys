@@ -8,6 +8,23 @@ use std::sync::{Mutex, Once};
 /// Maximum log file size in bytes before rotation (50 MB)
 const MAX_LOG_SIZE: u64 = 50 * 1024 * 1024;
 
+// Force allocator to release free memory back to system (Linux only)
+// Call periodically (e.g., after config reload) to reduce resident memory
+#[cfg(target_os = "linux")]
+unsafe extern "C" {
+    fn malloc_trim(pad: usize);
+}
+
+#[cfg(target_os = "linux")]
+pub fn trim_memory() {
+    unsafe { malloc_trim(0); }
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn trim_memory() {
+    // No-op on non-Linux systems
+}
+
 /// Global runtime config
 pub struct Config {
     pub verbose: bool,
@@ -63,10 +80,10 @@ fn ensure_session_newline_once(path: &PathBuf) {
 }
 
 pub fn log_to_cache(message: &str) {
-    let path = log_path();    
+    let path = log_path();
     rotate_log_if_needed(&path);
     ensure_session_newline_once(&path);
-    
+
     let mut file = OpenOptions::new()
         .create(true)
         .append(true)
@@ -78,7 +95,7 @@ pub fn log_to_cache(message: &str) {
 }
 
 pub fn log_message(message: &str) {
-    let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S");
+    let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
     let msg = format!("[{}][Stasis] {}", timestamp, message);
 
     log_to_cache(&msg);
@@ -89,7 +106,7 @@ pub fn log_message(message: &str) {
 }
 
 pub fn log_error_message(message: &str) {
-    let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S");
+    let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
     let error_msg = format!("[{}][ERROR] {}", timestamp, message);
 
     log_to_cache(&error_msg);

@@ -79,6 +79,8 @@ pub async fn spawn_ipc_socket_with_listener(
 
                                                     log_message("Config reloaded successfully");
 
+                                                    crate::log::trim_memory();
+
                                                     // Load active profile name
                                                     let active_profile = dirs::home_dir()
                                                         .map(|mut p| {
