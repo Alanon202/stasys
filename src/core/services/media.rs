@@ -105,7 +105,11 @@ pub async fn check_media_playing_zbus(conn: &Connection, ignore_remote_media: bo
         return false;
     }
 
-    for name in mpris_names {
+    // First pass: Check all players for Playing status
+    let mut found_playing_player = false;
+    let mut playing_players: Vec<(String, String)> = Vec::new();
+
+    for name in &mpris_names {
         let player_proxy = match Proxy::new(conn, name.as_str(), "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2.Player").await {
             Ok(p) => p,
             Err(_) => continue,
@@ -123,6 +127,15 @@ pub async fn check_media_playing_zbus(conn: &Connection, ignore_remote_media: bo
         };
         let identity: String = mpris_proxy.get_property("Identity").await.unwrap_or_else(|_| name.clone());
 
+        playing_players.push((name.clone(), identity));
+        found_playing_player = true;
+    }
+
+    if !found_playing_player {
+        return false;
+    }
+
+    for (name, identity) in &playing_players {
         let identity_lower = identity.to_lowercase();
         let bus_name_lower = name.to_lowercase();
         let combined = format!("{} {}", identity_lower, bus_name_lower);
@@ -164,7 +177,9 @@ pub async fn check_media_playing_zbus(conn: &Connection, ignore_remote_media: bo
         }
     }
 
-    false
+    // All playing players were filtered out
+    // Double-check with pactl to catch race conditions (e.g., browser MPRIS lag)
+    has_any_media_playing().await
 }
 
 async fn has_any_media_playing() -> bool {
