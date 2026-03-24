@@ -9,6 +9,8 @@ use crate::core::manager::{helpers::{decr_active_inhibitor, incr_active_inhibito
 // Players that are always considered local (browsers, local video players)
 const ALWAYS_LOCAL_PLAYERS: &[&str] = &[
     "firefox",
+    "zen",
+    "floorp",
     "chrome",
     "chromium",
     "brave",
@@ -73,25 +75,13 @@ pub async fn spawn_media_monitor_dbus(manager: Arc<tokio::sync::Mutex<Manager>>)
 }
 
 async fn update_media_state(manager: &Arc<tokio::sync::Mutex<Manager>>, conn: &Connection) {
-    let (ignore_remote_media, media_blacklist, browser_playing) = {
+    let (ignore_remote_media, media_blacklist) = {
         let mgr = manager.lock().await;
         let ignore = mgr.state.cfg.as_ref().map(|c| c.ignore_remote_media).unwrap_or(false);
         let blacklist = mgr.state.cfg.as_ref().map(|c| c.media_blacklist.clone()).unwrap_or_default();
-        (ignore, blacklist, mgr.state.browser_media_playing)
+        (ignore, blacklist)
     };
 
-    // If browser extension says it's playing, trust it completely
-    if browser_playing {
-        let mut mgr = manager.lock().await;
-        if !mgr.state.media_playing {
-            incr_active_inhibitor(&mut mgr).await;
-            mgr.state.media_playing = true;
-            mgr.state.media_blocking = true;
-        }
-        return;
-    }
-
-    // Otherwise check MPRIS for non-browser media
     let any_playing = check_media_playing_zbus(conn, ignore_remote_media, &media_blacklist).await;
     let mut mgr = manager.lock().await;
     if any_playing && !mgr.state.media_playing {
@@ -132,12 +122,11 @@ pub async fn check_media_playing_zbus(conn: &Connection, ignore_remote_media: bo
             Err(_) => continue,
         };
         let identity: String = mpris_proxy.get_property("Identity").await.unwrap_or_else(|_| name.clone());
-        
+
         let identity_lower = identity.to_lowercase();
         let bus_name_lower = name.to_lowercase();
         let combined = format!("{} {}", identity_lower, bus_name_lower);
 
-        // Check user's custom blacklist
         let is_blacklisted = media_blacklist.iter().any(|b| {
             let b_lower = b.to_lowercase();
             combined.contains(&b_lower)
@@ -147,7 +136,6 @@ pub async fn check_media_playing_zbus(conn: &Connection, ignore_remote_media: bo
             continue;
         }
 
-        // Check if this is a browser or local video player
         let is_always_local = ALWAYS_LOCAL_PLAYERS.iter().any(|local| {
             combined.contains(local)
         });
@@ -156,20 +144,18 @@ pub async fn check_media_playing_zbus(conn: &Connection, ignore_remote_media: bo
             return true;
         }
 
-        // For non-local players: two-pronged approach
-        // First check if any media is actually playing
         if !has_any_media_playing().await {
-            continue; // No audio detected, skip this player
+            continue; // No audio detected for this player, check next
         }
 
-        // Media is playing - now check user preference
+        // Audio detected - now check user preference
         if ignore_remote_media {
             // User wants to ignore remote media
             // Verify audio is actually going to a running sink
             if has_running_sink().await {
                 return true; // Local audio output confirmed
             }
-            // No running sink, so this is likely remote - skip it
+            // No running sink, so this is likely remote - check next player
             continue;
         } else {
             // User doesn't want to ignore remote media

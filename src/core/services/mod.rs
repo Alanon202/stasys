@@ -1,5 +1,4 @@
 pub mod app_inhibit;
-pub mod browser_media;
 pub mod dbus;
 pub mod input;
 pub mod media;
