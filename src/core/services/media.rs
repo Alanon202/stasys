@@ -24,7 +24,7 @@ const ALWAYS_LOCAL_PLAYERS: &[&str] = &[
     "celluloid",
 ];
 
-pub async fn spawn_media_monitor_dbus(manager: Arc<tokio::sync::Mutex<Manager>>) -> Result<()> {
+pub async fn spawn_media_monitor_dbus(manager: Arc<tokio::sync::Mutex<Manager>>, conn: Connection) -> Result<()> {
     // Check if media monitoring is enabled in config
     let monitor_media = {
         let mgr = manager.lock().await;
@@ -42,14 +42,6 @@ pub async fn spawn_media_monitor_dbus(manager: Arc<tokio::sync::Mutex<Manager>>)
     crate::log::log_message("Starting MPRIS media monitor");
 
     task::spawn(async move {
-        let conn = match Connection::session().await {
-            Ok(c) => c,
-            Err(e) => {
-                crate::log::log_error_message(&format!("Failed to connect to D-Bus: {}", e));
-                return;
-            }
-        };
-
         let rule = MatchRule::builder()
             .msg_type(zbus::message::Type::Signal)
             .interface("org.freedesktop.DBus.Properties")

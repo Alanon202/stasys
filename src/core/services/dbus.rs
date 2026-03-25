@@ -38,13 +38,13 @@ where
     }
 }
 
-pub async fn listen_for_suspend_events(idle_manager: Arc<Mutex<Manager>>) -> ZbusResult<()> {
+pub async fn listen_for_suspend_events(idle_manager: Arc<Mutex<Manager>>, connection: Connection) -> ZbusResult<()> {
     with_reconnect("suspend", move || {
         let manager = Arc::clone(&idle_manager);
+        let conn = connection.clone();
         async move {
-            let connection = Connection::system().await?;
             let proxy = Proxy::new(
-                &connection,
+                &conn,
                 "org.freedesktop.login1",
                 "/org/freedesktop/login1",
                 "org.freedesktop.login1.Manager"
@@ -77,11 +77,11 @@ pub async fn listen_for_suspend_events(idle_manager: Arc<Mutex<Manager>>) -> Zbu
     Ok(())
 }
 
-pub async fn listen_for_lid_events(idle_manager: Arc<Mutex<Manager>>) -> ZbusResult<()> {
+pub async fn listen_for_lid_events(idle_manager: Arc<Mutex<Manager>>, connection: Connection) -> ZbusResult<()> {
     with_reconnect("lid", move || {
         let manager = Arc::clone(&idle_manager);
+        let conn = connection.clone();
         async move {
-            let connection = Connection::system().await?;
             log_message("Listening for D-Bus lid events via UPower...");
 
             let rule = MatchRule::builder()
@@ -93,7 +93,7 @@ pub async fn listen_for_lid_events(idle_manager: Arc<Mutex<Manager>>) -> ZbusRes
 
             let mut stream = zbus::MessageStream::for_match_rule(
                 rule,
-                &connection,
+                &conn,
                 None,
             ).await?;
 
@@ -142,18 +142,18 @@ pub async fn listen_for_lid_events(idle_manager: Arc<Mutex<Manager>>) -> ZbusRes
     Ok(())
 }
 
-pub async fn listen_for_lock_events(idle_manager: Arc<Mutex<Manager>>) -> ZbusResult<()> {
+pub async fn listen_for_lock_events(idle_manager: Arc<Mutex<Manager>>, connection: Connection) -> ZbusResult<()> {
     with_reconnect("lock", move || {
         let manager = Arc::clone(&idle_manager);
+        let conn = connection.clone();
         async move {
-            let connection = Connection::system().await?;
             log_message("Listening for D-Bus lock/unlock events...");
 
-            let session_path = get_current_session_path(&connection).await?;
+            let session_path = get_current_session_path(&conn).await?;
             log_message(&format!("Monitoring session: {}", session_path.as_str()));
 
             let proxy = Proxy::new(
-                &connection,
+                &conn,
                 "org.freedesktop.login1",
                 session_path.clone(),
                 "org.freedesktop.login1.Session"
@@ -275,25 +275,29 @@ async fn get_current_session_path(connection: &Connection) -> ZbusResult<zvarian
 }
 
 // Combined listener that handles suspend, lid, and lock events
-pub async fn listen_for_power_events(idle_manager: Arc<Mutex<Manager>>) -> ZbusResult<()> {
+pub async fn listen_for_power_events(idle_manager: Arc<Mutex<Manager>>, connection: Connection) -> ZbusResult<()> {
     let suspend_manager = Arc::clone(&idle_manager);
     let lid_manager = Arc::clone(&idle_manager);
     let lock_manager = Arc::clone(&idle_manager);
     
+    let conn_suspend = connection.clone();
+    let conn_lid = connection.clone();
+    let conn_lock = connection.clone();
+    
     let suspend_handle = tokio::spawn(async move {
-        if let Err(e) = listen_for_suspend_events(suspend_manager).await {
+        if let Err(e) = listen_for_suspend_events(suspend_manager, conn_suspend).await {
             log_message(&format!("Suspend listener error: {e:?}"));
         }
     });
     
     let lid_handle = tokio::spawn(async move {
-        if let Err(e) = listen_for_lid_events(lid_manager).await {
+        if let Err(e) = listen_for_lid_events(lid_manager, conn_lid).await {
             log_message(&format!("Lid listener error: {e:?}"));
         }
     });
     
     let lock_handle = tokio::spawn(async move {
-        if let Err(e) = listen_for_lock_events(lock_manager).await {
+        if let Err(e) = listen_for_lock_events(lock_manager, conn_lock).await {
             log_message(&format!("Lock listener error: {e:?}"));
         }
     });

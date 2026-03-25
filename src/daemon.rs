@@ -6,6 +6,7 @@ use tokio::{
     task::LocalSet,
     time::Duration,
 };
+use zbus::Connection;
 
 use crate::{
     config::parser::load_config,
@@ -37,6 +38,16 @@ pub async fn run_daemon(listener: UnixListener, verbose: bool) -> Result<()> {
     let manager = Manager::new(Arc::clone(&cfg));
     let manager = Arc::new(Mutex::new(manager));
 
+    // --- Initialize shared D-Bus connections ---
+    let system_conn = Connection::system().await?;
+    let session_conn = Connection::session().await?;
+    
+    // Store session connection in manager for recheck_media
+    {
+        let mut mgr = manager.lock().await;
+        mgr.session_conn = Some(session_conn.clone());
+    }
+
     // --- Spawn background tasks ---
     let idle_handle = spawn_idle_task(Arc::clone(&manager));
     let lock_handle = spawn_lock_watcher(Arc::clone(&manager)).await;
@@ -52,8 +63,9 @@ pub async fn run_daemon(listener: UnixListener, verbose: bool) -> Result<()> {
     
     // --- Spawn suspend event listener ---
     let dbus_manager = Arc::clone(&manager);
+    let system_conn_clone = system_conn.clone();
     tokio::spawn(async move {
-        if let Err(e) = listen_for_power_events(dbus_manager).await {
+        if let Err(e) = listen_for_power_events(dbus_manager, system_conn_clone).await {
             log_error_message(&format!("D-Bus suspend event listener failed: {}", e));
         }
     });
@@ -82,7 +94,7 @@ pub async fn run_daemon(listener: UnixListener, verbose: bool) -> Result<()> {
    
     // --- Spawn media monitor task ---
     if cfg.monitor_media {
-        if let Err(e) = spawn_media_monitor_dbus(Arc::clone(&manager)).await {
+        if let Err(e) = spawn_media_monitor_dbus(Arc::clone(&manager), session_conn.clone()).await {
             log_error_message(&format!("Failed to spawn media monitor: {}", e));
         }
     }

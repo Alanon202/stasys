@@ -28,6 +28,7 @@ pub struct Manager {
     pub lock_task_handle: Option<JoinHandle<()>>,
     pub media_task_handle: Option<JoinHandle<()>>,
     pub input_task_handle: Option<JoinHandle<()>>,
+    pub session_conn: Option<Connection>,
 }
 
 impl Manager {
@@ -39,6 +40,7 @@ impl Manager {
             lock_task_handle: None,
             media_task_handle: None,
             input_task_handle: None,
+            session_conn: None,
         }
     }
 
@@ -445,13 +447,13 @@ impl Manager {
             None => (false, Vec::new()),
         };
 
-        // Get a temporary connection for the check
-        let conn = match Connection::session().await {
-            Ok(c) => c,
-            Err(_) => return,
+        // Use the shared session connection
+        let conn = match &self.session_conn {
+            Some(c) => c.clone(),
+            None => return,
         };
 
-        // sync check (pactl + mpris).
+        // sync check (pactl + mpris). 
         let playing = crate::core::services::media::check_media_playing_zbus(&conn, ignore_remote, &media_blacklist).await;
 
         // Only change state via the helpers so behaviour stays consistent:
@@ -464,7 +466,6 @@ impl Manager {
             self.state.media_playing = false;
         }
     }
-
     pub async fn shutdown(&mut self) {
         self.state.shutdown_flag.notify_waiters();
 
