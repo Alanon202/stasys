@@ -1,4 +1,4 @@
-use std::{process::Command, sync::Arc};
+use std::sync::Arc;
 use eyre::Result;
 use futures_util::stream::StreamExt;
 use tokio::task;
@@ -175,27 +175,55 @@ pub async fn check_media_playing_zbus(conn: &Connection, ignore_remote_media: bo
 }
 
 async fn has_any_media_playing() -> bool {
+    // Small delay to allow audio buffers to sync (matching original logic)
     tokio::time::sleep(std::time::Duration::from_millis(300)).await;
     
-    let output = match Command::new("pactl")
-        .args(["list", "sink-inputs", "short"])
-        .output() {
-        Ok(o) => o,
-        Err(_) => return false,
-    };
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    !stdout.trim().is_empty()
+    is_alsa_pcm_running()
 }
 
 async fn has_running_sink() -> bool {
-    let output = match Command::new("sh")
-        .args(["-c", "pactl list sinks short | grep -i running"])
-        .output() {
-        Ok(o) => o,
-        Err(_) => return false,
-    };
+    // In ALSA terms, a running PCM playback device is a running sink.
+    is_alsa_pcm_running()
+}
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    !stdout.trim().is_empty()
+fn is_alsa_pcm_running() -> bool {
+    let proc_asound = std::path::Path::new("/proc/asound");
+    if !proc_asound.exists() {
+        return false;
+    }
+
+    if let Ok(entries) = std::fs::read_dir(proc_asound) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+
+            // Only look into card directories (card0, card1, etc.)
+            if name.starts_with("card") && entry.path().is_dir() {
+                if let Ok(pcm_entries) = std::fs::read_dir(entry.path()) {
+                    for pcm_entry in pcm_entries.flatten() {
+                        let pcm_name = pcm_entry.file_name().to_string_lossy().into_owned();
+
+                        // Look for playback devices (ending in 'p')
+                        if pcm_name.starts_with("pcm") && pcm_name.ends_with('p') {
+                            // Check all subdevices (sub0, sub1, etc.)
+                            if let Ok(sub_entries) = std::fs::read_dir(pcm_entry.path()) {
+                                for sub_entry in sub_entries.flatten() {
+                                    if sub_entry.file_name().to_string_lossy().starts_with("sub") {
+                                        let mut status_path = sub_entry.path();
+                                        status_path.push("status");
+
+                                        if let Ok(status) = std::fs::read_to_string(&status_path) {
+                                            if status.contains("state: RUNNING") {
+                                                return true;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    false
 }
