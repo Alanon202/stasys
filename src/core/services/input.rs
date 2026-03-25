@@ -11,7 +11,7 @@ use std::{
 
 use input::LibinputInterface;
 use tokio::sync::Mutex;
-use futures::FutureExt; // for now_or_never()
+use futures_util::FutureExt; // for now_or_never()
 use crate::{core::manager::Manager, log::log_message};
 
 struct InputDetection;

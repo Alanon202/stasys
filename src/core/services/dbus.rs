@@ -1,5 +1,5 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
-use futures::StreamExt;
+use futures_util::stream::StreamExt;
 use tokio::sync::Mutex;
 use zbus::{Connection, fdo::Result as ZbusResult, Proxy, MatchRule};
 use zvariant::Value;

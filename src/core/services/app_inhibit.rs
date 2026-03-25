@@ -191,7 +191,7 @@ pub async fn spawn_app_inhibit_task(
     if cfg.inhibit_apps.is_empty() {
         log_message("No inhibit_apps configured, sleeping app inhibitor.");
         tokio::spawn(async move {
-            futures::future::pending::<()>().await;
+            futures_util::future::pending::<()>().await;
         });
         return inhibitor;
     }
