@@ -14,7 +14,7 @@ use crate::{
         manager::{idle_loops::{spawn_idle_task, spawn_lock_watcher}, Manager},
         services::{
             app_inhibit::{AppInhibitor, spawn_app_inhibit_task},
-            dbus::listen_for_power_events,
+            dbus::{listen_for_power_events, spawn_inhibit_monitor},
             input::spawn_input_task,
             media::spawn_media_monitor_dbus,
             power_detection::{detect_initial_power_state, spawn_power_source_monitor},
@@ -26,7 +26,7 @@ use crate::{
     SOCKET_PATH,
 };
 
-/// Spawn the daemon with all its background services
+// Spawn the daemon with all its background services
 pub async fn run_daemon(listener: UnixListener, verbose: bool) -> Result<()> {
     // --- Load config ---
     if verbose {
@@ -52,7 +52,7 @@ pub async fn run_daemon(listener: UnixListener, verbose: bool) -> Result<()> {
     let idle_handle = spawn_idle_task(Arc::clone(&manager));
     let lock_handle = spawn_lock_watcher(Arc::clone(&manager)).await;
     let input_handle = spawn_input_task(Arc::clone(&manager));
-    
+
     // Store handles in manager - CRITICAL: Use explicit scope to drop lock
     {
         let mut mgr = manager.lock().await;
@@ -70,13 +70,10 @@ pub async fn run_daemon(listener: UnixListener, verbose: bool) -> Result<()> {
         }
     });
 
-    // --- AC/Battery Detection (DETECT FIRST, synchronously) ---
-    // Use explicit scope like in original working code
     {
         detect_initial_power_state(&manager).await;
     }
     
-    // --- AC/Battery Detection ---
     let laptop_manager = Arc::clone(&manager);
     tokio::spawn(spawn_power_source_monitor(laptop_manager));
 
@@ -84,20 +81,29 @@ pub async fn run_daemon(listener: UnixListener, verbose: bool) -> Result<()> {
     {
         let mut mgr = manager.lock().await;
         mgr.trigger_instant_actions().await;
-    } // Lock dropped here
-    
+    }
+
     // --- Spawn app inhibit task ---
     let app_inhibitor = spawn_app_inhibit_task(
         Arc::clone(&manager),
         Arc::clone(&cfg)
     ).await;
-   
+
     // --- Spawn media monitor task ---
     if cfg.monitor_media {
         if let Err(e) = spawn_media_monitor_dbus(Arc::clone(&manager), session_conn.clone()).await {
             log_error_message(&format!("Failed to spawn media monitor: {}", e));
         }
     }
+
+    // --- Spawn D-Bus Inhibitor Monitor ---
+    let inhibitor_manager = Arc::clone(&manager);
+    tokio::spawn(async move {
+        // We MUST use a private connection for the monitor.
+        if let Ok(monitor_conn) = Connection::session().await {
+            spawn_inhibit_monitor(inhibitor_manager, monitor_conn).await;
+        }
+    });
     
     // --- Wayland setup ---
     let wayland_manager = Arc::clone(&manager);
@@ -142,7 +148,7 @@ pub async fn run_daemon(listener: UnixListener, verbose: bool) -> Result<()> {
     }).await
 }
 
-/// Async shutdown handler (Ctrl+C / SIGTERM)
+// Async shutdown handler (Ctrl+C / SIGTERM)
 async fn setup_shutdown_handler(
     idle_timer: Arc<Mutex<Manager>>,
     app_inhibitor: Arc<Mutex<AppInhibitor>>,

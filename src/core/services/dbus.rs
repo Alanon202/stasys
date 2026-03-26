@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{collections::{HashMap, HashSet}, sync::Arc, time::Duration};
 use futures_util::stream::StreamExt;
 use tokio::sync::Mutex;
 use zbus::{Connection, fdo::Result as ZbusResult, Proxy, MatchRule};
@@ -6,8 +6,9 @@ use zvariant::Value;
 use crate::core::events::handlers::{handle_event, Event};
 use crate::core::manager::Manager;
 use crate::log::log_message;
+use crate::core::manager::helpers::{incr_active_inhibitor, decr_active_inhibitor};
 
-/// Helper to reconnect to a D-Bus service with exponential backoff
+// Helper to reconnect to a D-Bus service with exponential backoff
 async fn with_reconnect<F, Fut>(service_name: &str, mut handler: F)
 where
     F: FnMut() -> Fut + Send + 'static,
@@ -15,7 +16,7 @@ where
 {
     let mut retry_count = 0;
     let max_delay = Duration::from_secs(60);
-    
+
     loop {
         match handler().await {
             Ok(()) => {
@@ -26,14 +27,14 @@ where
                 log_message(&format!("D-Bus {} disconnected: {}, reconnecting...", service_name, e));
             }
         }
-        
+
         // Exponential backoff
         let delay = Duration::from_secs(2_u64.saturating_pow(retry_count.min(5)))
             .min(max_delay);
-        
+
         tokio::time::sleep(delay).await;
         retry_count += 1;
-        
+
         log_message(&format!("Attempting to reconnect to D-Bus {}...", service_name));
     }
 }
@@ -304,4 +305,69 @@ pub async fn listen_for_power_events(idle_manager: Arc<Mutex<Manager>>, connecti
     
     let _ = tokio::try_join!(suspend_handle, lid_handle, lock_handle);
     Ok(())
+}
+
+// Monitor D-Bus for Inhibit calls (ScreenSaver and Portal).
+pub async fn spawn_inhibit_monitor(manager: Arc<Mutex<Manager>>, connection: Connection) {
+    log_message("Starting D-Bus inhibitor monitor (Spy Mode)...");
+
+    let rules = vec![
+        "type='method_call',interface='org.freedesktop.ScreenSaver',member='Inhibit'".to_string(),
+        "type='method_call',interface='org.freedesktop.ScreenSaver',member='UnInhibit'".to_string(),
+        "type='method_call',interface='org.freedesktop.portal.Inhibit',member='Inhibit'".to_string(),
+        "type='method_call',interface='org.gnome.SessionManager',member='Inhibit'".to_string(),
+        "type='method_call',interface='org.gnome.SessionManager',member='UnInhibit'".to_string(),
+        "type='signal',interface='org.freedesktop.DBus',member='NameOwnerChanged'".to_string(),
+    ];
+
+    let _ = connection.call_method(
+        Some("org.freedesktop.DBus"),
+        "/org/freedesktop/DBus",
+        Some("org.freedesktop.DBus.Monitoring"),
+        "BecomeMonitor",
+        &(rules, 0u32)
+    ).await;
+
+    // Track active senders by unique name to correctly count
+    let mut active_senders: HashSet<String> = HashSet::new();
+    let mut stream = zbus::MessageStream::from(connection);
+
+    while let Some(msg) = stream.next().await {
+        let Ok(msg) = msg else { continue };
+        let header = msg.header();
+        let sender = header.sender().map(|s| s.to_string()).unwrap_or_default();
+        let member = header.member().map(|m| m.to_string()).unwrap_or_default();
+
+        if sender.is_empty() { continue; }
+
+        match header.message_type() {
+            zbus::message::Type::MethodCall => {
+                if member == "Inhibit" {
+                    if active_senders.insert(sender.clone()) {
+                        log_message(&format!("External inhibitor detected from: {}", sender));
+                        let mut mgr = manager.lock().await;
+                        incr_active_inhibitor(&mut mgr).await;
+                    }
+                } else if member == "UnInhibit" {
+                    if active_senders.remove(&sender) {
+                        log_message(&format!("External inhibitor cleared from: {}", sender));
+                        let mut mgr = manager.lock().await;
+                        decr_active_inhibitor(&mut mgr).await;
+                    }
+                }
+            },
+            zbus::message::Type::Signal => {
+                if member == "NameOwnerChanged" {
+                    if let Ok((name, _, new_owner)) = msg.body().deserialize::<(String, String, String)>() {
+                        if new_owner.is_empty() && active_senders.remove(&name) {
+                            log_message(&format!("External inhibitor removed (app exited): {}", name));
+                            let mut mgr = manager.lock().await;
+                            decr_active_inhibitor(&mut mgr).await;
+                        }
+                    }
+                }
+            },
+            _ => {}
+        }
+    }
 }

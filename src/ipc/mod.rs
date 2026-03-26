@@ -228,6 +228,7 @@ pub async fn spawn_ipc_socket_with_listener(
                                                         let manually_inhibited = mgr.state.manually_paused;
                                                         let paused = mgr.state.paused;
                                                         let media_blocking = mgr.state.media_blocking;
+                                                        let external_blocking = mgr.state.active_inhibitor_count > 0;
                                                         let cfg_clone = mgr.state.cfg.clone();
 
                                                         drop(mgr);
@@ -243,7 +244,7 @@ pub async fn spawn_ipc_socket_with_listener(
                                                             Err(_) => false,
                                                         };
 
-                                                        let idle_inhibited = paused || app_blocking || manually_inhibited;
+                                                        let idle_inhibited = paused || app_blocking || manually_inhibited || external_blocking;
 
                                                         break if as_json {
                                                             // Load active profile for JSON tooltip
@@ -269,15 +270,16 @@ pub async fn spawn_ipc_socket_with_listener(
                                                                 "text": text,
                                                                 "alt": icon,
                                                                 "tooltip": format!(
-                                                                    "{}\nProfile: {}\nIdle time: {}\nUptime: {}\nPaused: {}\nManually paused: {}\nApp blocking: {}\nMedia blocking: {}",
+                                                                    "{}\nProfile: {}\nIdle time: {}\nUptime: {}\nPaused: {}\nManually paused: {}\nApp blocking: {}\nMedia blocking: {}\nExternal (D-Bus): {}",
                                                                     if idle_inhibited { "Idle inhibited" } else { "Idle active" },
                                                                     profile_display,
                                                                     format_duration(idle_time),
                                                                     format_duration(uptime),
                                                                     paused,
                                                                     manually_inhibited,
-                                                                    app_blocking,
-                                                                    media_blocking
+                                                                    if app_blocking { "yes" } else { "no" },
+                                                                    if media_blocking { "yes" } else { "no" },
+                                                                    if external_blocking { "yes" } else { "no" }
                                                                 )
                                                             })
                                                             .to_string()
